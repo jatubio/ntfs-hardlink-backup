@@ -51,10 +51,6 @@
 .PARAMETER splice
 	Splice reconnects Outer Junctions/Symlink directories in the destination to their original targets.
 	see http://schinagl.priv.at/nt/ln/ln.html#splice
-.PARAMETER unroll
-	Unroll follows Outer Junctions/Symlink Directories and rebuilds the content of Outer Junctions/Symlink Directories inside the hierarchy at the destination location.
-	Unroll also applies to Outer Symlink Files, which means, that unroll causes the target of Outer Symlink Files to be copied to the destination location.
-	see http://schinagl.priv.at/nt/ln/ln.html#unroll
 .PARAMETER backupModeACLs
 	Using the Backup Mode ACLs aka Access Control Lists, which contain the security for Files, Folders, Junctions or SymbolicLinks, and Encrypted Files are also copied.
 	see http://schinagl.priv.at/nt/ln/ln.html#backup
@@ -67,11 +63,6 @@
 	Or specify a CIDR prefix size (0 to 32)
 	Use this in an office with multiple subnets that can all be covered (summarised) by a single netmask.
 	Without this parameter the default is to use the subnet mask of the local machine interface(s), if localSubnetOnly is on.
-.PARAMETER SkipIfNoChanges
-	Check log file for changes on source and delete backup folder if not changes.
-	Thus, we get less backup folders and therefore less hard links. Delaying the possibility of reaching the NTFS link limit of 1023.
-.PARAMETER BackupMiddleStrategy
-	Strategy of keeping the middle and the first backup in a time period.
 .PARAMETER emailTo
 	Address to be notified about success and problems. If not given no Emails will be sent.
 .PARAMETER emailFrom
@@ -170,17 +161,11 @@ Param(
 	[Parameter(Mandatory=$False)]
 	[switch]$splice,
 	[Parameter(Mandatory=$False)]
-	[switch]$unroll,
-	[Parameter(Mandatory=$False)]
 	[switch]$backupModeACLs,
 	[Parameter(Mandatory=$False)]
 	[switch]$localSubnetOnly,
 	[Parameter(Mandatory=$False)]
 	[string]$localSubnetMask,
-	[Parameter(Mandatory=$False)]
-	[switch]$SkipIfNoChanges,
-	[Parameter(Mandatory=$False)]
-	[switch]$BackupMiddleStrategy,
 	[Parameter(Mandatory=$False)]
 	[string]$emailSubject="",
 	[Parameter(Mandatory=$False)]
@@ -644,11 +629,6 @@ if (-not $splice.IsPresent) {
 	$splice = Is-TrueString "${IniFileString}"
 }
 
-if (-not $unroll.IsPresent) {
-	$IniFileString = Get-IniParameter "unroll" "${FQDN}"
-	$unroll = Is-TrueString "${IniFileString}"
-}
-
 if (-not $backupModeACLs.IsPresent) {
 	$IniFileString = Get-IniParameter "backupModeACLs" "${FQDN}"
 	$backupModeACLs = Is-TrueString "${IniFileString}"
@@ -661,16 +641,6 @@ if (-not $localSubnetOnly.IsPresent) {
 
 if ([string]::IsNullOrEmpty($localSubnetMask)) {
 	$localSubnetMask = Get-IniParameter "localSubnetMask" "${FQDN}"
-}
-
-if (-not $SkipIfNoChanges.IsPresent) {
-	$IniFileString = Get-IniParameter "SkipIfNoChanges" "${FQDN}"
-	$SkipIfNoChanges = Is-TrueString "${IniFileString}"
-}
-
-if (-not $BackupMiddleStrategy.IsPresent) {
-	$IniFileString = Get-IniParameter "BackupMiddleStrategy" "${FQDN}"
-	$BackupMiddleStrategy = Is-TrueString "${IniFileString}"
 }
 
 if (![string]::IsNullOrEmpty($localSubnetMask)) {
@@ -1326,12 +1296,6 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				$spliceArgument = ""
 			}			
 			
-			if ($unroll -eq $True) {
-				$unrollArgument = " --unroll "
-			} else {
-				$unrollArgument = ""
-			}			
-			
 			if ($backupModeACLs -eq $True) {
 				$backupModeACLsArgument = " --backup "
 			} else {
@@ -1358,7 +1322,7 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				}
 			}
 
-			$commonArgumentString = "$traditionalArgument $noadsArgument $noeaArgument $timeToleranceArgument $excludeFilesString $excludeDirsString $spliceArgument  $unrollArgument $backupModeACLsArgument"
+			$commonArgumentString = "$traditionalArgument $noadsArgument $noeaArgument $timeToleranceArgument $excludeFilesString $excludeDirsString $spliceArgument $backupModeACLsArgument"
 
 			if ($LogFile) {
 				$logFileCommandAppend = " >> `"$LogFile`""
@@ -1428,164 +1392,58 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				}
 			}
 
-			#.PARAMETER SkipIfNoChanges
-			#Check log file for changes on source and delete backup folder if not changes.
-			#Thus, we get less backup folders and therefore less hard links. Delaying the possibility of reaching the NTFS link limit of 1023.		
-			$backup_deleted=$false
-			if (($LogFile) -and ($SkipIfNoChanges -eq $True)) {
-
-				if ($StepTiming -eq $True) {
-					$stepTime = get-date -f "yyyy-MM-dd HH-mm-ss"
-				}
-
-				echo  "$stepCounter $stepTime Checking for changes"
-				$stepCounter++
-
-				$have_changes=$false
-				foreach ( $line in 1..$backup_response.length ) {	
-					if ($backup_response[$line] -match '^(\+|-|\*)(f|h|s|j|m|d|t|e|p)\s[a-z]:\\') {
-						$have_changes=$true
-						break
-					}
-				}
-				
-				if($have_changes -eq $False)
-				{
-					echo "ATTENTION: Delete the backup $actualBackupDestination$backupMappedString because no changes"
-					if ($LogFile) {
-						"`r`nATTENTION: Delete the backup $actualBackupDestination$backupMappedString because no changes" | Out-File "$LogFile"  -encoding ASCII -append
-					}
-
-					`cmd /c  "`"`"$lnPath`"  --deeppathdelete `"$actualBackupDestination$backupMappedString`" $logFileCommandAppend`""`					
-					
-					#Flag because later we add 1 and we deleted the folder
-					$backup_deleted=$true
-				} else {
-					echo "Changes found. We keep the backup $actualBackupDestination$backupMappedString"
-				}
-				
-				echo "`n"
-
-			}
-			
 			if ($StepTiming -eq $True) {
 				$stepTime = get-date -f "yyyy-MM-dd HH-mm-ss"
 			}
 
 			echo  "$stepCounter. $stepTime Deleting old backups"
 			$stepCounter++
-			
-			#.PARAMETER BackupMiddleStrategy
-			#Check log file for changes on source and delete backup folder if not changes.
-			#Thus, we get less backup folders and therefore less hard links. Delaying the possibility of reaching the NTFS link limit of 1023.		
-			if ($BackupMiddleStrategy -eq $True) {
-				#Always keep last backup. 
-				#If we have deleted current backup folder, remove last backup from lastBackupFolders
-				if ($backup_deleted -eq $True) {
-					echo ("Keep " + $lastBackupFolders[-1].Name)
-					#Arrays in PowerShell are fixed-size and we can't remove elements.
-					#Thus, to remove the last entry in the array, you could overwrite the array by a copy that includes every item except the last
-					$lastBackupFolders = $lastBackupFolders[0..($lastBackupFolders.length - 2)]
+
+			#plus 1 because we just created a new backup but we have checked for old backups before we have
+			#created the new one
+			$backupsInDestination = $lastBackupFolders.length + 1
+			$summary = $yearBackupsKeptText + "Found $backupsInDestination regular backup(s), keeping a maximum of $backupsToKeep regular backup(s)`n"
+			echo $summary
+
+			if ($LogFile) {
+				$summary | Out-File "$LogFile"  -encoding ASCII -append
+			}
+			$emailBody = $emailBody + $summary
+
+			$backupsToDelete=$backupsInDestination - $backupsToKeep
+			if ($backupsToDelete -gt 0) {
+				echo  "Deleting $backupsToDelete old backup(s)"
+				if ($LogFile) {
+					"`r`nDeleting $backupsToDelete old backup(s)" | Out-File "$LogFile"  -encoding ASCII -append
 				}
-				
-				($lastBackupFolders)
-				echo ("Found " + $lastBackupFolders.length + " old backups")
-
-				##Array with Backup Folders to be deleted
-				$deleteBackupFolders = @()
-
-				#Hardcoded parameters
-				#bms=abbreviation of "Backup Middle Strategy"
-				#$bmsHourlyMax=48
-				$bmsDailyMax=4
-				$bmsDailyEvery=12
-				$bmsWeeklyMax=8
-				$bmsWeeklyEvery=3.5
-				$bmsMonthlyMax=24
-				$bmsMonthlyEvery=15
-				$bmsAnnuallyMax=6
-				$bmsAnnuallyEvery=182.5
-				$bmsMaxYears=5
-
-				$bmsDailyFolders=@()
-				$bmsWeeklyFolders=@()
-				$bmsMonthlyFolders=@()
-				$bmsAnnuallyFolders=@()
-				$bmsMaxYearsFolders=@()
-				
-				#Loop through each backupfolder adding folders to be deleted to $deleteBackupFolders Array				
-				#Los clasificamos primero
-				for ($i=$lastBackupFolders.length - 1; $i -ge 0; $i-- ) {	
-					$folder=$lastBackupFolders[$i].Name
-					$folder=$folder.Substring($folder.length - 19)
-
-					
-					#Daily Folders
-					
-					foreach($hour in $bmsKeepHourly){
-						echo "Removing Hourly folders"
-						$dateToKeep=(Get-Date).AddHours(-24) 
-						$folderDate=(Get-Date $folder)
+				$backupsDeleted = 0
+				while ($backupsDeleted -lt $backupsToDelete) {
+					$folderToDelete =  $selectedBackupDestination +"\"+ $lastBackupFolders[$backupsDeleted].Name
+					echo "Deleting $folderToDelete"
+					if ($LogFile) {
+						"`r`nDeleting $folderToDelete" | Out-File "$LogFile"  -encoding ASCII -append
 					}
-					#Removing MaxYears folders
-				}
-				
-				
-				#$dateTime = get-date -f "yyyy-MM-dd HH-mm-ss"
-				#QQQ	
-			} else {
-				#plus 1 because we just created a new backup but we have checked for old backups before we have
-				#created the new one
-				#Only if we have not deleted current folder because SkipIfNoChanges Parameter
-				if ($backup_deleted -eq $False) {
-					$backupsInDestination = $lastBackupFolders.length + 1
-				} else {
-					$backupsInDestination = $lastBackupFolders.length
+					$backupsDeleted++
+
+					`cmd /c  "`"`"$lnPath`"  --deeppathdelete `"$folderToDelete`" $logFileCommandAppend`""`
 				}
 
-				$summary = $yearBackupsKeptText + "Found $backupsInDestination regular backup(s), keeping a maximum of $backupsToKeep regular backup(s)`n"
+				$summary = "`nDeleted $backupsDeleted old backup(s)`n"
 				echo $summary
-
 				if ($LogFile) {
 					$summary | Out-File "$LogFile"  -encoding ASCII -append
 				}
+
 				$emailBody = $emailBody + $summary
-
-				$backupsToDelete=$backupsInDestination - $backupsToKeep
-				if ($backupsToDelete -gt 0) {
-					echo  "Deleting $backupsToDelete old backup(s)"
-					if ($LogFile) {
-						"`r`nDeleting $backupsToDelete old backup(s)" | Out-File "$LogFile"  -encoding ASCII -append
-					}
-					$backupsDeleted = 0
-					while ($backupsDeleted -lt $backupsToDelete) {
-						$folderToDelete =  $selectedBackupDestination +"\"+ $lastBackupFolders[$backupsDeleted].Name
-						echo "Deleting $folderToDelete"
-						if ($LogFile) {
-							"`r`nDeleting $folderToDelete" | Out-File "$LogFile"  -encoding ASCII -append
-						}
-						$backupsDeleted++
-
-						`cmd /c  "`"`"$lnPath`"  --deeppathdelete `"$folderToDelete`" $logFileCommandAppend`""`
-					}
-
-					$summary = "`nDeleted $backupsDeleted old backup(s)`n"
-					echo $summary
-					if ($LogFile) {
-						$summary | Out-File "$LogFile"  -encoding ASCII -append
-					}
-
-					$emailBody = $emailBody + $summary
-				} else {
-					$summary = "`nNo old backups were deleted`n"
-					echo $summary
-					if ($LogFile) {
-						$summary | Out-File "$LogFile"  -encoding ASCII -append
-					}
-
-					$emailBody = $emailBody + $summary
+			} else {
+				$summary = "`nNo old backups were deleted`n"
+				echo $summary
+				if ($LogFile) {
+					$summary | Out-File "$LogFile"  -encoding ASCII -append
 				}
-			} # End of .PARAMETER BackupMiddleStrategy
+
+				$emailBody = $emailBody + $summary
+			}
 		} else {
 			# The backup source does not exist - there was no point processing this source.
 			$output = "ERROR: Backup source does not exist - $backup_source - backup NOT done for this source`r`n"
