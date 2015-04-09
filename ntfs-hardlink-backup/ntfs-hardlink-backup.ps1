@@ -108,6 +108,8 @@
 	see http://schinagl.priv.at/nt/ln/ln.html#unroll
 .PARAMETER version
 	print the version information and exit.	
+.PARAMETER LogVerbose
+	Increase verbosity of messages on the logfile.
 .EXAMPLE
 	PS D:\> d:\ln\bat\ntfs-hardlink-backup.ps1 -backupSources D:\backup_source1 -backupDestination E:\backup_dest -emailTo "me@example.org" -emailFrom "backup@example.org" -SMTPServer example.org -SMTPUser "backup@example.org" -SMTPPassword "secr4et"
 	Simple backup.
@@ -192,6 +194,8 @@ Param(
 	[string]$lnPath="",
 	[Parameter(Mandatory=$False)]
 	[switch]$unroll,
+	[Parameter(Mandatory=$False)]
+	[switch]$LogVerbose=$False,
 	[Parameter(Mandatory=$False)]
 	[switch]$version=$False
 )
@@ -573,9 +577,16 @@ if ([string]::IsNullOrEmpty($postExecutionCommand)) {
 	$postExecutionCommand = Get-IniParameter "postExecutionCommand" "${FQDN}" -doNotSubstitute
 }
 
+#Unroll parameter
 if (-not $unroll.IsPresent) {
 	$IniFileString = Get-IniParameter "unroll" "${FQDN}"
 	$unroll = Is-TrueString "${IniFileString}"
+}
+
+#LogVerbose parameter
+if (-not $LogVerbose.IsPresent) {
+	$IniFileString = Get-IniParameter "LogVerbose" "${FQDN}"
+	$LogVerbose = Is-TrueString "${IniFileString}"
 }
 
 if ([string]::IsNullOrEmpty($lnPath)) {
@@ -598,6 +609,13 @@ if ([string]::IsNullOrEmpty($lnPath) -or !(Test-Path -Path $lnPath -PathType lea
 		}
 	}
 }
+
+#LogVerbosing. Showing ln.exe path 
+if($LogVerbose)
+{
+	$tempLogContent += "`r`nUsing ln.exe from: $lnPath"
+}
+
 #try to run ln.exe just to check if it can start. Possible that the ln version does not fit the Windows version (e.g. 64bit installed on a 32bit system)
 $output=`cmd /c "`"$lnPath`"  -h" 2`>`&1`
 
@@ -1139,9 +1157,14 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 						echo $unrollLogMessage | Out-File "$LogFile"  -encoding ASCII -append
 					}
 				}
-
+			
 				#echo "$lnPath $commonArgumentString --copy `"$backup_source_path`" `"$actualBackupDestination`"    $logFileCommandAppend"
-				`cmd /c  "`"`"$lnPath`" $commonArgumentString --copy `"$backup_source_path`" `"$actualBackupDestination`" $logFileCommandAppend 2`>`&1 `""`
+				$cmdString="`"$lnPath`" $commonArgumentString --copy `"$backup_source_path`" `"$actualBackupDestination`""
+				#LogVerbosing. Showing ln.exe command line
+				if ($LogVerbose -and $LogFile) {
+					"$cmdString`r`n" | Out-File "$LogFile"  -encoding ASCII -append
+				}
+				`cmd /c  "`"$cmdString $logFileCommandAppend 2`>`&1 `""`
 			} else {
 				echo "Delorean copy from $backup_source_path to $actualBackupDestination$backupMappedString against $selectedBackupDestination\$lastBackupFolderName"
 				if ($LogFile) {
@@ -1152,7 +1175,13 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				}
 
 				#echo "$lnPath $commonArgumentString --delorean `"$backup_source_path`" `"$selectedBackupDestination\$lastBackupFolderName`" `"$actualBackupDestination`" $logFileCommandAppend"
-				`cmd /c  "`"`"$lnPath`" $commonArgumentString --delorean `"$backup_source_path`" `"$selectedBackupDestination\$lastBackupFolderName`" `"$actualBackupDestination`" $logFileCommandAppend 2`>`&1 `""`
+				$cmdString="`"$lnPath`" $commonArgumentString --delorean `"$backup_source_path`" `"$selectedBackupDestination\$lastBackupFolderName`" `"$actualBackupDestination`""
+				#LogVerbosing. Showing ln.exe command line
+				if ($LogVerbose -and $LogFile) {
+					"$cmdString`r`n" | Out-File "$LogFile"  -encoding ASCII -append
+				}
+				`cmd /c  "`"$cmdString $logFileCommandAppend 2`>`&1 `""`
+				exit
 			}
 			
 			$saved_lastexitcode = $LASTEXITCODE
