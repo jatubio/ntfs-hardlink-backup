@@ -118,6 +118,8 @@
 	Backup with more than one source.
 .NOTES
 	Author: Artur Neumann *INFN*, Phil Davis *INFN*, Nikita Feodonit
+.BACKWARDS COMPATIBILITY
+	Now $lastBackupFolders have only the names and not the items
 #>
 
 [CmdletBinding()]
@@ -214,6 +216,12 @@ if(!$included_functions)
 {
 	$ScriptDirectory = Split-Path $MyInvocation.MyCommand.Path
 	. (Join-Path $ScriptDirectory functions.ps1)
+}
+
+if(!$included_features)
+{
+	$ScriptDirectory = Split-Path $MyInvocation.MyCommand.Path
+	. (Join-Path $ScriptDirectory features.ps1)
 }
 
 Function Get-Version
@@ -990,7 +998,7 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				}
 				$stepCounter++
 				$backup_source_path = $backup_source
-			}
+			} # End of check for ShadowCopy
 
 			if ($StepTiming -eq $True) {
 				$stepTime = get-date -f "yyyy-MM-dd HH-mm-ss"
@@ -1001,12 +1009,13 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 			echo "Destination: $actualBackupDestination$backupMappedString"
 
 			$yearBackupsKeptText = ""
+			#It's used by delorean copy as source folder
 			$lastBackupFolderName = ""
+			# Contains the list of all the old backups to be deleted
+			# To keep one backup, remove from this list
 			$lastBackupFolders = @()
-			$lastBackupFoldersPerYear = @{}
-			$lastBackupFoldersPerYearToKeep = @{}
+
 			If (Test-Path $selectedBackupDestination -pathType container) {
-				$oldBackupItems = Get-ChildItem -Force -Path $selectedBackupDestination | Where-Object {$_ -is [IO.DirectoryInfo]} | Sort-Object -Property Name
 
 				#escape $backup_source_folder if we are doing backup of a full disk like D:\ to folder [D]
 				if ($backup_source_folder -match "\[[A-Z]\]") {
@@ -1015,73 +1024,10 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				else {
 					$escaped_backup_source_folder = $backup_source_folder
 				}
-
 				
-				if ($backupsToKeepPerYear -gt 0) {
-				
-					#find all backups per year
-					foreach ($item in $oldBackupItems) {
-						if ($item.Name  -match '^'+$escaped_backup_source_folder+' - (\d{4})-\d{2}-\d{2} \d{2}-\d{2}-\d{2}$' ) {
-							if (!($lastBackupFoldersPerYear.ContainsKey($matches[1]))) {
-								$lastBackupFoldersPerYear[$matches[1]] = @()
-							}
-							$lastBackupFoldersPerYear[$matches[1]]+= $item
-						}
-					}
-				
-					#decide which backups from the last year to keep
-					foreach ($year in $($lastBackupFoldersPerYear.keys | sort)) {
-						#echo $year
-						if (!($lastBackupFoldersPerYearToKeep.ContainsKey($year))) {
-							$lastBackupFoldersPerYearToKeep[$year] = @()
-						}
-						
-						# If we want to keep more backups than are actually there then just keep the whole array
-						if ($backupsToKeepPerYear -ge $lastBackupFoldersPerYear[$year].length) {
-							$lastBackupFoldersPerYearToKeep[$year] = $lastBackupFoldersPerYear[$year]
-						} else {
-							#calculate the day we ideally would like to have a backup of
-							#then find the backup we have that is nearest to that date and keep it
-							
-							$daysBetweenBackupsToKeep = 365/$backupsToKeepPerYear
-							$dayOfYearToKeepBackupOf = 0
-							while (($lastBackupFoldersPerYearToKeep[$year].length -lt $backupsToKeepPerYear) -and ($lastBackupFoldersPerYear[$year].length -gt 0)) {
-								$dayOfYearToKeepBackupOf = $dayOfYearToKeepBackupOf + $daysBetweenBackupsToKeep
-								$previousDaysDifference = 366
-								foreach ($backupItem in $lastBackupFoldersPerYear[$year]) {
-									
-									$backupItem.Name  -match '^'+$escaped_backup_source_folder+' - (\d{4}-\d{2}-\d{2}) \d{2}-\d{2}-\d{2}$' | Out-Null
-									$daysDifference = [math]::abs($dayOfYearToKeepBackupOf-(Get-Date $matches[1]).DayOfYear)
-
-									if ($daysDifference -lt $previousDaysDifference) {
-										$bestBackupToKeep=$backupItem
-									}
-									$previousDaysDifference = $daysDifference
-								}
-								
-								$lastBackupFoldersPerYearToKeep[$year] +=$bestBackupToKeep
-								$lastBackupFoldersPerYear[$year] = $lastBackupFoldersPerYear[$year] -ne $bestBackupToKeep
-							}	
-						}
-						$thisYearBackupsKept = $lastBackupFoldersPerYearToKeep[$year].length
-						$yearBackupsKeptText += "Keeping $thisYearBackupsKept backup(s) from $year `r`n"
-					}
-				
-				}
-				
-				# get me the last backup if any
-				foreach ($item in $oldBackupItems) {
-					if ($item.Name  -match '^'+$escaped_backup_source_folder+' - (\d{4})-\d{2}-\d{2} \d{2}-\d{2}-\d{2}$' ) {
-						$lastBackupFolderName = $item.Name
-						
-						#if we have that folder in the list of folders to keep do not add it to the list
-						#of lastBackupFolders because they will be used for deleting old folders
-						if ($lastBackupFoldersPerYearToKeep[$matches[1]] -notcontains $item) {
-							$lastBackupFolders += $item
-						}
-					}
-				}
-				
+				# Contains the list of the backups belonging to source
+				$oldBackupSourceFolders = @(GetAllBackupsSourceItems $selectedBackupDestination $escaped_backup_source_folder)
+				$lastBackupFolderName = $oldBackupSourceFolders[-1]
 			}
 			
 			if ($traditional -eq $True) {
@@ -1140,7 +1086,8 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				}
 			}
 
-			$commonArgumentString = "$traditionalArgument $noadsArgument $noeaArgument $timeToleranceArgument $excludeFilesString $excludeDirsString $spliceArgument $unrollArgument $backupModeACLsArgument"
+			#We don't need put spaces between parameters because on declaration we already put them.
+			$commonArgumentString = "$traditionalArgument$noadsArgument$noeaArgument$timeToleranceArgument$excludeFilesString$excludeDirsString$spliceArgument$unrollArgument$backupModeACLsArgument".trim()
 
 			if ($LogFile) {
 				$logFileCommandAppend = " >> `"$LogFile`""
@@ -1181,7 +1128,6 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 					"$cmdString`r`n" | Out-File "$LogFile"  -encoding ASCII -append
 				}
 				`cmd /c  "`"$cmdString $logFileCommandAppend 2`>`&1 `""`
-				exit
 			}
 			
 			$saved_lastexitcode = $LASTEXITCODE
@@ -1235,50 +1181,60 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 			echo  "$stepCounter. $stepTime Deleting old backups"
 			$stepCounter++
 
-			#plus 1 because we just created a new backup but we have checked for old backups before we have
-			#created the new one
-			$backupsInDestination = $lastBackupFolders.length + 1
-			$summary = $yearBackupsKeptText + "Found $backupsInDestination regular backup(s), keeping a maximum of $backupsToKeep regular backup(s)`n"
-			echo $summary
-
-			if ($LogFile) {
-				$summary | Out-File "$LogFile"  -encoding ASCII -append
+			# Parameter backupsToKeepPerYear QQQ
+			if($oldBackupSourceFolders.length -gt 0)
+			{			
+				if ($backupsToKeepPerYear -gt 0) {
+					$lastBackupFolders=@(GetBackupsToKeepPerYear $backupsToKeepPerYear $oldBackupSourceFolders $escaped_backup_source_folder)
+				}
+				else
+				{
+					$lastBackupFolders=$oldBackupSourceFolders
+				}				
 			}
+
+			$summary=""
+
+			#INIT PARAMETER backupsToKeep
+			
+			#plus 1 because we just created a new backup but we have checked for old backups before we have
+			#created the new one and want to keep them
+			$backupsToDelete=$lastBackupFolders.length+1
+			$echo=("Selected $backupsToDelete old backup(s) to delete.")
+			Write-Host "$echo`n"
+			$summary+="`r`n$echo`r`n"
+
+			$echo="Keeping a maximum of $backupsToKeep regular backup(s)."
+			if($LogVerbose) {$echo+=" (Parameter backupsToKeep=$backupsToKeep)"}
+			Write-Host "$echo`n"
+			$summary+="`r`n$echo`r`n"
+
+			WriteLog $summary
 			$emailBody = $emailBody + $summary
 
-			$backupsToDelete=$backupsInDestination - $backupsToKeep
-			if ($backupsToDelete -gt 0) {
-				echo  "Deleting $backupsToDelete old backup(s)"
-				if ($LogFile) {
-					"`r`nDeleting $backupsToDelete old backup(s)" | Out-File "$LogFile"  -encoding ASCII -append
-				}
-				$backupsDeleted = 0
-				while ($backupsDeleted -lt $backupsToDelete) {
-					$folderToDelete =  $selectedBackupDestination +"\"+ $lastBackupFolders[$backupsDeleted].Name
-					echo "Deleting $folderToDelete"
-					if ($LogFile) {
-						"`r`nDeleting $folderToDelete" | Out-File "$LogFile"  -encoding ASCII -append
-					}
-					$backupsDeleted++
+			$backupsToDelete=($backupsToDelete - $backupsToKeep)
+			if($lastBackupFolders.length -gt $backupsToDelete)
+			{
+				$lastBackupFolders=$lastBackupFolders[0..($backupsToDelete - 1)]
+			}
 
-					DeleteFolder "$folderToDelete"
-				}
+			#END PARAMETER backupsToKeep
 
-				$summary = "`nDeleted $backupsDeleted old backup(s)`n"
-				echo $summary
-				if ($LogFile) {
-					$summary | Out-File "$LogFile"  -encoding ASCII -append
-				}
+			#Allways lastBackupFolders items will be deleted!!
+			if ($lastBackupFolders.length -gt 0) {
+				DeleteBackupFolders $lastBackupFolders
 
+				$summary = "`nDeleted $backupsToDelete old backup(s)`n"
+				Write-Host $summary
+				WriteLog $summary
 				$emailBody = $emailBody + $summary
+
 			} else {
 				$summary = "`nNo old backups were deleted`n"
-				echo $summary
-				if ($LogFile) {
-					$summary | Out-File "$LogFile"  -encoding ASCII -append
-				}
-
+				Write-Host $summary
+				WriteLog $summary
 				$emailBody = $emailBody + $summary
+
 			}
 		} else {
 			# The backup source does not exist - there was no point processing this source.

@@ -78,7 +78,7 @@ Function ShowArray
 
 	Process
     {
-		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing for TruthString: $TruthString"
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
 
 		$summary=""
 		if($writeHost -eq $True) {Write-Host ""}
@@ -104,7 +104,7 @@ Function ShowArray
 		
 		return "`n"+$summary		
 		
-		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing for TruthString: $TruthString TruthValue: $TruthValue"
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
     }
 
     End
@@ -155,7 +155,7 @@ Function GetFolderDate
 
 	Process
     {
-		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing for TruthString: $TruthString"
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
 
 			# Format Name of folder on a correct DateTime Format replacing "-" with ":" in the TimeStamp
 		$folderDate=(($folderName.Substring($folderName.length - 19 , 11)) + ( $folderName.Substring($folderName.length - 8) -replace "-",":" ))
@@ -163,7 +163,7 @@ Function GetFolderDate
 		
 		return $folderDate
 		
-		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing for TruthString: $TruthString TruthValue: $TruthValue"
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
     }
 
     End
@@ -257,7 +257,7 @@ Function GetTimeSpanFolders
 
 	Process
     {
-		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing for TruthString: $TruthString"
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
 		
 		$backupsToKeep=@()
 		
@@ -351,7 +351,7 @@ Function GetTimeSpanFolders
 		#Write-Host "`n"
 		return $backupsToKeep
 		
-		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing for TruthString: $TruthString TruthValue: $TruthValue"
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
     }
 
     End
@@ -379,7 +379,7 @@ Function AddDateTime
 
 	Process
     {
-		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing for TruthString: $TruthString"
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
 		
 		if($format -eq "years") {
 			return ($time).AddYears($every)
@@ -393,7 +393,7 @@ Function AddDateTime
 			return ($time).AddMinutes($every)
 		}
 
-		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing for TruthString: $TruthString TruthValue: $TruthValue"
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
     }
 
     End
@@ -437,11 +437,237 @@ Function DeleteFolder
 
 	Process
     {
-		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing for TruthString: $TruthString"
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
 
 		`cmd /c  "`"`"$lnPath`"  --deeppathdelete `"$folderName`" $logFileCommandAppend`""`
 		
-		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing for TruthString: $TruthString TruthValue: $TruthValue"
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
+    }
+
+    End
+	{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function ended"}
+}
+
+Function GetAllBackupsSourceItems
+{
+	<#
+	.Synopsis
+		Get collection of backups items belonging source.
+
+	.Description
+		Extracted code from International-Nepal-Fellowship original version
+		Loop all folders on backup destination directory and filter by backup
+		source folder name
+	
+	.Notes
+		Author    : Juan Antonio Tubio <jatubio@gmail.com>				
+		GitHub    : https://github.com/jatubio
+		Date      : 2015/04/09
+		Version   : 1.0
+
+	.Backwards Compatibility
+		International-Nepal-Fellowship original version work with folder items.
+		I have changed here to return only collection of names, no more folder items.
+	
+	.Parameter BackupDestination
+		$selectedBackupDestination
+
+	.Parameter EscapedBackupSourceFolder
+		$backup_source_folder escaped
+
+	.Outputs
+		Hashtable oldBackupSourceFolders
+
+	.Example
+		$oldBackupFolders=GetAllBackupsSourceItems $selectedBackupDestination $backup_source_folder_escaped
+
+	#>
+	[CmdletBinding()]
+	Param(
+		[ValidateNotNullOrEmpty()]
+		[Parameter(Mandatory=$True)]
+		[String]$BackupDestination,
+		[ValidateNotNullOrEmpty()]
+		[Parameter(Mandatory=$True)]
+		[String]$EscapedBackupSourceFolder
+	)
+
+	Begin
+		{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function started"}
+
+	Process
+    {
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
+
+		# Contains the list of folders inside backup destination folder
+		$oldBackupItems = Get-ChildItem -Force -Path $BackupDestination | Where-Object {$_ -is [IO.DirectoryInfo]} | Sort-Object -Property Name
+
+		# Contains the list of the backups belonging to source
+		$oldBackupSourceFolders = @()
+		foreach ($item in $oldBackupItems) {
+			if ($item.Name  -match '^'+$EscapedBackupSourceFolder+' - (\d{4})-\d{2}-\d{2} \d{2}-\d{2}-\d{2}$' ) {
+				$oldBackupSourceFolders += $item.name
+			}
+		}
+		
+		return $oldBackupSourceFolders
+		
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
+    }
+
+    End
+	{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function ended"}
+}
+
+Function DeleteBackupFolders
+{
+	<#
+	.Synopsis
+		Delete a collection of Backup Folders.
+
+	.Description
+		If collection have no elements, show one message with
+		'No old backups were deleted'
+
+	.Notes
+		Author    : Juan Antonio Tubio <jatubio@gmail.com>
+		GitHub    : https://github.com/jatubio
+		Date      : 2015/04/10
+		Version   : 1.0
+
+	.Parameter backupsToDelete
+		Specifies the collection with backup folders to delete
+
+	.Parameter dryrun
+		Simulation Mode.  Not do any writing on the hard disk, instead it 
+		will just report the actions it would have taken.
+
+	.Outputs
+		Nothing
+
+	.Example
+		DeleteBackupFolders $backupFolders
+
+	#>
+	[CmdletBinding()]
+	Param(
+		[ValidateNotNullOrEmpty()]
+		[Parameter(Mandatory=$True)]
+		[Array]$backupsToDelete,
+		[Parameter(Mandatory=$False)]
+		[switch]$dryrun=$True
+	)
+
+	Begin
+		{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function started"}
+
+	Process
+    {
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
+
+		$log=""
+		
+		if($dryrun -eq $True)
+		{
+			$echo="Simulation Mode: No backup folder(s) will be damaged :)"
+			$log+="`r`n$echo`r`n`r`n"
+			Write-Host "`n$echo`n"
+		}
+		
+		if($backupsToDelete.length -gt 0)
+		{
+			$echo=("Deleting " + $backupsToDelete.length + " old backup(s)")
+			if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
+			Write-Host $echo
+			$log+="`r`n$echo"
+			
+			foreach($folder in $backupsToDelete)
+			{
+				$folderToDelete =  $selectedBackupDestination +"\"+ $folder
+
+				if($dryrun -eq $False) 
+				{
+				$echo="Deleting $folderToDelete"
+
+				if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
+				$log+="`r`n$echo"
+				Write-Host $echo
+				
+				if($dryrun -eq $False)
+				{
+					DeleteFolder "$folderToDelete"
+				}
+			}
+
+			$echo="`nDeleted " + $backupsToDelete.length +" old backup(s)`n"
+			if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
+			Write-Host "`n$echo"
+			$log+="`r`n$echo"
+		}
+		else
+		{
+			$echo="No old backups were deleted"
+			if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
+			Write-Host "`n$echo"
+			$log+="`r`n$echo"
+		}
+
+		WriteLog $log
+		$emailBody = $emailBody + $summary
+
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
+    }
+
+    End
+	{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function ended"}
+}
+
+Function WriteLog
+{
+	<#
+	.Synopsis
+		Write text in log file
+
+	.Description
+
+	.Notes
+		Author    : Juan Antonio Tubio <jatubio@gmail.com>
+		GitHub    : https://github.com/jatubio
+		Date      : 2015/04/10
+		Version   : 1.0
+
+	.Parameter text
+		Specifies the text to write on log file
+
+	.Outputs
+		Nothing
+
+	.Outside Scope Variables
+		$LogFile
+	
+	.Example
+		WriteLog "testing"
+
+	#>
+	[CmdletBinding()]
+	Param(
+		[ValidateNotNullOrEmpty()]
+		[Parameter(Mandatory=$True)]
+		[string]$text
+	)
+
+	Begin
+		{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function started"}
+
+	Process
+    {
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
+
+		if ($LogFile) {
+			$text | Out-File "$LogFile"  -encoding ASCII -append
+		}
+		
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
     }
 
     End
