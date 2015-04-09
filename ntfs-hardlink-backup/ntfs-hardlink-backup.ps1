@@ -102,6 +102,10 @@
 	Command to run after the backup is done.
 .PARAMETER lnPath
 	The full path to the ln executable. e.g. c:\Tools\Backup\ln.exe
+.PARAMETER unroll
+	Unroll follows Outer Junctions/Symlink Directories and rebuilds the content of Outer Junctions/Symlink Directories inside the hierarchy at the destination location.
+	Unroll also applies to Outer Symlink Files, which means, that unroll causes the target of Outer Symlink Files to be copied to the destination location.
+	see http://schinagl.priv.at/nt/ln/ln.html#unroll
 .PARAMETER version
 	print the version information and exit.	
 .EXAMPLE
@@ -186,6 +190,8 @@ Param(
 	[string]$postExecutionCommand="",
 	[Parameter(Mandatory=$False)]
 	[string]$lnPath="",
+	[Parameter(Mandatory=$False)]
+	[switch]$unroll,
 	[Parameter(Mandatory=$False)]
 	[switch]$version=$False
 )
@@ -565,6 +571,11 @@ if ($preExecutionDelay -gt 0) {
 
 if ([string]::IsNullOrEmpty($postExecutionCommand)) {
 	$postExecutionCommand = Get-IniParameter "postExecutionCommand" "${FQDN}" -doNotSubstitute
+}
+
+if (-not $unroll.IsPresent) {
+	$IniFileString = Get-IniParameter "unroll" "${FQDN}"
+	$unroll = Is-TrueString "${IniFileString}"
 }
 
 if ([string]::IsNullOrEmpty($lnPath)) {
@@ -1078,6 +1089,12 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 			} else {
 				$spliceArgument = ""
 			}			
+
+			if ($unroll -eq $True) {
+				$unrollArgument = " --unroll "
+			} else {
+				$unrollArgument = ""
+			}			
 			
 			if ($backupModeACLs -eq $True) {
 				$backupModeACLsArgument = " --backup "
@@ -1105,7 +1122,7 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				}
 			}
 
-			$commonArgumentString = "$traditionalArgument $noadsArgument $noeaArgument $timeToleranceArgument $excludeFilesString $excludeDirsString $spliceArgument $backupModeACLsArgument"
+			$commonArgumentString = "$traditionalArgument $noadsArgument $noeaArgument $timeToleranceArgument $excludeFilesString $excludeDirsString $spliceArgument $unrollArgument $backupModeACLsArgument"
 
 			if ($LogFile) {
 				$logFileCommandAppend = " >> `"$LogFile`""
@@ -1113,18 +1130,25 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 
 			$start_time = get-date -f "yyyy-MM-dd HH-mm-ss"
 
+			$unrollLogMessage="Using Unroll mode:`r`n`tAll Outer Junctions/Symlink Directories will be rebuild inside the hierarchy at the destination location.`r`n`tOuter Symlink Files will be copied to the destination location.`r`n`tsee http://schinagl.priv.at/nt/ln/ln.html#unroll for more information.`r`n"
 			if ($lastBackupFolderName -eq "" ) {
 				echo "Full copy from $backup_source_path to $actualBackupDestination$backupMappedString"
 				if ($LogFile) {
 					"`r`nFull copy from $backup_source_path to $actualBackupDestination$backupMappedString" | Out-File "$LogFile"  -encoding ASCII -append
+					if ($unroll -eq $True) {
+						echo $unrollLogMessage | Out-File "$LogFile"  -encoding ASCII -append
+					}
 				}
 
 				#echo "$lnPath $commonArgumentString --copy `"$backup_source_path`" `"$actualBackupDestination`"    $logFileCommandAppend"
 				`cmd /c  "`"`"$lnPath`" $commonArgumentString --copy `"$backup_source_path`" `"$actualBackupDestination`" $logFileCommandAppend 2`>`&1 `""`
 			} else {
-				echo "Delorian copy from $backup_source_path to $actualBackupDestination$backupMappedString against $selectedBackupDestination\$lastBackupFolderName"
+				echo "Delorean copy from $backup_source_path to $actualBackupDestination$backupMappedString against $selectedBackupDestination\$lastBackupFolderName"
 				if ($LogFile) {
-					"`r`nDelorian copy from $backup_source_path to $actualBackupDestination$backupMappedString against $selectedBackupDestination\$lastBackupFolderName" | Out-File "$LogFile"  -encoding ASCII -append
+					"`r`nDelorean copy from $backup_source_path to $actualBackupDestination$backupMappedString against $selectedBackupDestination\$lastBackupFolderName" | Out-File "$LogFile"  -encoding ASCII -append
+					if ($unroll -eq $True) {
+						echo $unrollLogMessage | Out-File "$LogFile"  -encoding ASCII -append
+					}
 				}
 
 				#echo "$lnPath $commonArgumentString --delorean `"$backup_source_path`" `"$selectedBackupDestination\$lastBackupFolderName`" `"$actualBackupDestination`" $logFileCommandAppend"
