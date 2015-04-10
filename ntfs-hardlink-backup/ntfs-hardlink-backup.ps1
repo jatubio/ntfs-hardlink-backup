@@ -1228,7 +1228,7 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 			#plus 1 because we just created a new backup but we have checked for old backups before we have
 			#created the new one and want to keep them
 			$totalBackupsToDelete=$lastBackupFolders.length+1
-			$echo=("Selected $totalBackupsToDelete old backup(s) to delete.")
+			$echo="Selected $totalBackupsToDelete old backup(s) to delete."
 			Write-Host "$echo`n"
 			$summary+="`r`n$echo`r`n"
 
@@ -1249,8 +1249,16 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 			#END PARAMETER backupsToKeep
 
 			#Allways lastBackupFolders items will be deleted!!
-			DeleteBackupFolders $lastBackupFolders
-
+			DeleteBackupFolders $selectedBackupDestination $lastBackupFolders
+	
+				#Delete log files belonging to deleted backup folders
+			if($lastBackupFolders.length -gt 0)
+			{
+				$echo="Deleting log files beloging old backup(s) deleted."
+				Write-Host "$echo"
+				WriteLog "$echo"
+				DeleteLogFiles $logFileDestination $lastBackupFolders
+			}
 		} else {
 			# The backup source does not exist - there was no point processing this source.
 			$output = "ERROR: Backup source does not exist - $backup_source - backup NOT done for this source`r`n"
@@ -1264,17 +1272,7 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 	}
 
 	if (($deleteOldLogFiles -eq $True) -and ($logFileDestination)) {
-		$lastLogFiles = @()
-		If (Test-Path $logFileDestination -pathType container) {
-			$oldLogItems = Get-ChildItem -Force -Path $logFileDestination | Where-Object {$_ -is [IO.FileInfo]} | Sort-Object -Property Name
-
-			# get me the old logs if any
-			foreach ($item in $oldLogItems) {
-				if ($item.Name  -match '^\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}.log$' ) {
-					$lastLogFiles += $item
-				}
-			}
-		}
+		$lastLogFiles = @(GetAllLogsFiles $logFileDestination)
 
 		if ($StepTiming -eq $True) {
 			$stepTime = get-date -f "yyyy-MM-dd HH-mm-ss"
@@ -1282,54 +1280,36 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 		echo  "$stepCounter. $stepTime Deleting old log files"
 		$stepCounter++
 
+		#INIT PARAMETER backupsToKeep applied to logFiles
+		
+		$logFilesToKeep=$backupsToKeep
+			# If $backupsToKeep<=0, keep at least current log file
+		if($logFilesToKeep -le 0) {$logFilesToKeep=1}
+		
 		#No need to add 1 here because the new log existed already when we checked for old log files
-		$logFilesInDestination = $lastLogFiles.length
-		$summary = "`nFound $logFilesInDestination log file(s), keeping maximum of $backupsToKeep log file(s)`n"
-		echo $summary
-		if ($LogFile) {
-			$summary | Out-File "$LogFile"  -encoding ASCII -append
-		}
+		$totalLogFilesToDelete = $lastLogFiles.length
+		$echo="Selected $totalLogFilesToDelete log file(s) to delete."
+		Write-Host "$echo`n"
+		$summary+="`r`n$echo`r`n"
+
+		$echo="Keeping a maximum of $logFilesToKeep log files(s)."
+		if($LogVerbose) {$echo+=" (Using Parameter backupsToKeep)"}
+		Write-Host "$echo`n"
+		$summary+="`r`n$echo`r`n"
+
+		WriteLog $summary
 		$emailBody = $emailBody + $summary
 
-		$logFilesToDelete=$logFilesInDestination - $backupsToKeep
-		if ($logFilesToDelete -gt 0) {
-			echo  "Deleting $logFilesToDelete old logfile(s)"
-			if ($LogFile) {
-				"`r`nDeleting $logFilesToDelete old logfile(s)" | Out-File "$LogFile"  -encoding ASCII -append
-			}
-			$logFilesDeleted = 0
-			while ($logFilesDeleted -lt $logFilesToDelete) {
-				$logFileToDelete = $logFileDestination +"\"+ $lastLogFiles[$logFilesDeleted].Name
-
-				echo "Deleting $logFileToDelete(.zip)"
-				if ($LogFile) {
-					"`r`nDeleting $logFileToDelete(.zip)" | Out-File "$LogFile"  -encoding ASCII -append
-				}
-
-				If (Test-Path "$logFileToDelete") {
-					Remove-Item "$logFileToDelete"
-				}
-				If (Test-Path "$logFileToDelete.zip") {
-					Remove-Item "$logFileToDelete.zip"
-				}
-
-				$logFilesDeleted++
-			}
-
-			$summary = "`nDeleted $logFilesDeleted old logfile(s)`n"
-			echo $summary
-			if ($LogFile) {
-				$summary | Out-File "$LogFile"  -encoding ASCII -append
-			}
-			$emailBody = $emailBody + $summary
-		} else {
-			$summary = "`nNo old logfiles were deleted`n"
-			echo $summary
-			if ($LogFile) {
-				$summary | Out-File "$LogFile"  -encoding ASCII -append
-			}
-			$emailBody = $emailBody + $summary
+		$totalLogFilesToDelete=$totalLogFilesToDelete - $logFilesToKeep
+		if($lastLogFiles.length -gt $totalLogFilesToDelete)
+		{
+			$lastLogFiles=$lastLogFiles[0..($totalLogFilesToDelete - 1)]
 		}
+
+		#END PARAMETER backupsToKeep applied to logFiles
+		
+		#Allways lastLogFiles items will be deleted!!
+		DeleteLogFiles $logFileDestination $lastLogFiles
 	}
 
 	# We have processed each backup source. Now cleanup any remaining shadow copy.

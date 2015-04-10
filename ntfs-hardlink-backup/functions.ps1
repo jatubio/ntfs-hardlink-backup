@@ -118,7 +118,7 @@ Function GetFolderDate
 		Returns The DateTime of a Folder Backup
 
 	.Description
-		Returns the name of a folder backup and returns its DateTime 
+		Gets the name of a folder backup and returns its DateTime 
 
 	.Notes
 		Author    : Juan Antonio Tubio <jatubio@gmail.com>
@@ -533,7 +533,7 @@ Function DeleteBackupFolders
 		Author    : Juan Antonio Tubio <jatubio@gmail.com>
 		GitHub    : https://github.com/jatubio
 		Date      : 2015/04/10
-		Version   : 1.0
+		Version   : 1.1
 
 	.Parameter backupsToDelete
 		Specifies the collection with backup folders to delete
@@ -597,7 +597,7 @@ Function DeleteBackupFolders
 				}
 			}
 
-			$echo="`nDeleted " + $backupsToDelete.length +" old backup(s)`n"
+			$echo="Deleted " + $backupsToDelete.length +" old backup(s)`n"
 			if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
 			Write-Host "`n$echo"
 			$log+="`r`n$echo"
@@ -611,7 +611,7 @@ Function DeleteBackupFolders
 		}
 
 		WriteLog $log
-		$emailBody = $emailBody + $summary
+		$emailBody = $emailBody + $log
 
 		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
     }
@@ -664,6 +664,220 @@ Function WriteLog
 		if ($LogFile) {
 			$text | Out-File "$LogFile"  -encoding ASCII -append
 		}
+		
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
+    }
+
+    End
+	{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function ended"}
+}
+
+Function DeleteLogFiles
+{
+	<#
+	.Synopsis
+		Get a collection of folders names (or only with date-time strings) and delete
+		the log file belonging to them
+
+	.Description
+		If collection have no elements, show one message with
+		'No old logfiles were deleted'
+
+	.Notes
+		Author    : Juan Antonio Tubio <jatubio@gmail.com>
+		GitHub    : https://github.com/jatubio
+		Date      : 2015/04/10
+		Version   : 1.0
+
+	.Parameter logFileDestination
+		Path of logs destination folder
+
+	.Parameter folderNames
+		Specifies the collection with backup folders to delete
+
+	.Parameter dryrun
+		Simulation Mode.  Not do any writing on the hard disk, instead it 
+		will just report the actions it would have taken.
+
+	.Outputs
+		Nothing
+
+	.Example
+		DeleteLogFiles $logFileDestination $backupsToDelete
+
+	.Example
+		DeleteLogFiles $logFileDestination $lastLogFiles
+
+	#>
+	[CmdletBinding()]
+	Param(
+		[ValidateNotNullOrEmpty()]
+		[Parameter(Mandatory=$True)]
+		[String]$logFileDestination,
+		[ValidateNotNullOrEmpty()]
+		[Parameter(Mandatory=$True)]
+		[Array]$folderNames,
+		[Parameter(Mandatory=$False)]
+		[switch]$dryrun=$True
+	)
+
+	Begin
+		{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function started"}
+
+	Process
+    {
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
+
+		$log=""
+		
+		if($dryrun -eq $True)
+		{
+			$echo="Simulation Mode: No log file(s) will be damaged :)"
+			$log+="`r`n$echo`r`n`r`n"
+			Write-Host "`n$echo`n"
+		}
+		
+		$echoDeleted=""
+		$logDeleted=""
+		$logFilesDeleted=0
+		if($folderNames.length -gt 0)
+		{
+			foreach($folder in $folderNames)
+			{
+				$logFileToDelete=$folder
+				#if it's a full backup name folder, get only date-time part.
+				if($logFileToDelete.length -gt 19)
+				{
+					$logFileToDelete=$logFileToDelete.Substring($logFileToDelete.length - 19)
+				}				
+				$logFileToDelete =  $logFileDestination +"\"+ $logFileToDelete + ".log"
+
+				$echo=""
+				If (Test-Path "$logFileToDelete") 
+				{
+					$echo="Deleting $logFileToDelete"
+					if($dryrun -eq $False)
+					{
+						Remove-Item "$logFileToDelete"
+					}
+				}
+				
+				If (Test-Path "$logFileToDelete.zip") 
+				{
+					if($echo)
+					{
+						$echo+=" and (.zip)"
+					}
+					else
+					{
+					$echo="Deleting $logFileToDelete.zip"
+					}
+
+					if($dryrun -eq $False)
+					{
+						Remove-Item "$logFileToDelete.zip"
+					}
+				}
+				
+				if($echo)
+				{
+					if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
+					$logDeleted+="`r`n$echo"
+					$echoDeleted+="$echo`n"
+					$logFilesDeleted++					
+				}
+			}
+		}
+
+		if($logFilesDeleted -gt 0)
+		{
+			$echo=("Deleting " + $logFilesDeleted + " old log file(s)")
+			if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
+			$log+="$echo`r`n"
+			
+			$echo+="`n`n$echoDeleted"
+			Write-Host "$echo"
+			$log+="`r`n$logDeleted"
+
+			$echo="Deleted " + $logFilesDeleted +" old logfiles(s)"
+			if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
+			Write-Host "`n$echo"
+			$log+="`r`n$echo"
+		}
+		else
+		{
+			$echo="No old files were deleted"
+			if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
+			Write-Host "`n$echo"
+			$log+="`r`n$echo"
+		}
+
+		WriteLog $log
+		$emailBody = $emailBody + $log
+
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
+    }
+
+    End
+	{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function ended"}
+}
+
+Function GetAllLogsFiles
+{
+	<#
+	.Synopsis
+		Get collection of log files on logFileDestination folder
+
+	.Description
+	
+	.Notes
+		Author    : Juan Antonio Tubio <jatubio@gmail.com>				
+		GitHub    : https://github.com/jatubio
+		Date      : 2015/04/10
+		Version   : 1.0
+
+	.Backwards Compatibility
+		International-Nepal-Fellowship original version work with file items.
+		I have changed here to return only collection of names, no more file items.
+	
+	.Parameter logFileDestination
+		Path of logs destination folder
+
+	.Outputs
+		Hashtable lastLogFiles
+
+	.Example
+		$lastLogFiles=GetAllLogsFiles $logFileDestination
+
+	#>
+	[CmdletBinding()]
+	Param(
+		[ValidateNotNullOrEmpty()]
+		[Parameter(Mandatory=$True)]
+		[String]$logFileDestination
+	)
+
+	Begin
+		{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function started"}
+
+	Process
+    {
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
+
+		$lastLogFiles = @()
+		# Contains the list of files inside logs destination folder
+		If (Test-Path $logFileDestination -pathType container) {
+			$oldLogItems = Get-ChildItem -Force -Path $logFileDestination | Where-Object {$_ -is [IO.FileInfo]} | Sort-Object -Property Name
+
+			# get me the old logs if any
+			foreach ($item in $oldLogItems) {
+				if ($item.Name  -match '^\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}.log$' ) {
+					$lastLogFiles += $item
+				}
+			}
+		}
+		
+		return $oldBackupSourceFolders
 		
 		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
     }
