@@ -182,3 +182,115 @@ Function GetBackupsToKeepPerYear
     End
 	{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function ended"}
 }
+
+Function SkipIfNoChanges
+{
+	<#
+	.Synopsis
+		Parse log file for changes between source and destination folder
+		and delete backup folder if not changes.
+		Thus, we get less backup folders and therefore less hard links. 
+		Delaying the possibility of reaching the NTFS link limit of 1023.		
+
+	.Description
+		We take as changes:
+		
+			+	Copy/Create an item. 
+			*	Hardlink a file
+			-	Remove an item from the target that is not present in the source.
+	
+			In any item type(f,h,s,j,m,d,t,e,p)		
+	
+		For more information see Output section on http://schinagl.priv.at/nt/ln/ln.html#output
+
+	.Notes
+		Author    : Juan Antonio Tubio <jatubio@gmail.com>
+		GitHub    : https://github.com/jatubio
+		Date      : 2015/04/10
+		Version   : 1.1
+
+	.Parameter lnLog
+		Log returned by ln.exe tool (Collection from a file: $backup_response)
+
+	.Parameter currentBackupFolder
+		Full path of current backup folder. ($actualBackupDestination$backupMappedString)
+
+	.Parameter oldBackupSourceFolders
+		Specifies the Array of older backups folders found. ($oldBackupSourceFolders)
+
+	.Outputs
+		Nothing
+
+	.Outside Scope Variables
+	
+	.Example
+		SkipIfNoChanges $backup_response $actualBackupDestination$backupMappedString $loldBackupSourceFolders
+
+	#>
+	[CmdletBinding()]
+	Param(
+		[ValidateNotNullOrEmpty()]
+		[Parameter(Mandatory=$True)]
+		[Array]$lnLog,
+		[ValidateNotNullOrEmpty()]
+		[Parameter(Mandatory=$True)]
+		[String]$currentBackupFolder,
+		[ValidateNotNullOrEmpty()]
+		[Parameter(Mandatory=$True)]
+		[Array]$oldBackupSourceFolders
+	)
+
+	Begin
+		{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function started"}
+
+	Process
+    {
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
+
+		$have_changes=$false
+
+				# We take as changes:
+				#
+				# +	Copy/Create an item. 
+				# *	Hardlink a file
+				# -	Remove an item from the target that is not present in the source.
+				#
+				# In any item type(f,h,s,j,m,d,t,e,p)
+				#
+				# For more information see Output section on http://schinagl.priv.at/nt/ln/ln.html#output
+		foreach ( $line in 1..$lnLog.length ) {	
+			if ($lnLog[$line] -match '^(\+|-|\*)(f|h|s|j|m|d|t|e|p)\s[a-z]:\\') {
+				$have_changes=$true
+				break
+			}
+		}
+				
+		$log=""
+
+		if($have_changes -eq $False)
+		{
+			$echo="ATTENTION: Deleted the current backup ($currentBackupFolder) because no changes since the last backup."
+			$log+="`r`n$echo`r`n"
+			Write-Host "`n$echo"
+
+			DeleteFolder "$currentBackupFolder"
+			
+			#Arrays in PowerShell are fixed-size and we can't remove elements.
+			#Thus, to remove the last entry in the array, you could overwrite the array by a copy that includes every item except the last
+			$oldBackupSourceFolders = $oldBackupSourceFolders[0..($oldBackupSourceFolders.length - 2)]								
+		} else {
+			$echo="Changes found since the last backup. Keeping the current backup ($currentBackupFolder)."
+			$log+="`$echo`r`n"
+			Write-Host "$echo"
+		}
+		
+		WriteLog $log
+
+		return $oldBackupSourceFolders
+		
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
+    }
+
+    End
+	{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function ended"}
+}

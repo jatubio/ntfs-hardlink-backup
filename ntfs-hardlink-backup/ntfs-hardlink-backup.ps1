@@ -106,10 +106,13 @@
 	Unroll follows Outer Junctions/Symlink Directories and rebuilds the content of Outer Junctions/Symlink Directories inside the hierarchy at the destination location.
 	Unroll also applies to Outer Symlink Files, which means, that unroll causes the target of Outer Symlink Files to be copied to the destination location.
 	see http://schinagl.priv.at/nt/ln/ln.html#unroll
-.PARAMETER version
-	print the version information and exit.	
 .PARAMETER LogVerbose
 	Increase verbosity of messages on the logfile.
+.PARAMETER SkipIfNoChanges
+	Check log file for changes on source and delete backup folder if not changes.
+	Thus, we get less backup folders and therefore less hard links. Delaying the possibility of reaching the NTFS link limit of 1023.
+.PARAMETER version
+	print the version information and exit.	
 .EXAMPLE
 	PS D:\> d:\ln\bat\ntfs-hardlink-backup.ps1 -backupSources D:\backup_source1 -backupDestination E:\backup_dest -emailTo "me@example.org" -emailFrom "backup@example.org" -SMTPServer example.org -SMTPUser "backup@example.org" -SMTPPassword "secr4et"
 	Simple backup.
@@ -198,6 +201,8 @@ Param(
 	[switch]$unroll,
 	[Parameter(Mandatory=$False)]
 	[switch]$LogVerbose=$False,
+	[Parameter(Mandatory=$False)]
+	[switch]$SkipIfNoChanges,
 	[Parameter(Mandatory=$False)]
 	[switch]$version=$False
 )
@@ -595,6 +600,11 @@ if (-not $unroll.IsPresent) {
 if (-not $LogVerbose.IsPresent) {
 	$IniFileString = Get-IniParameter "LogVerbose" "${FQDN}"
 	$LogVerbose = Is-TrueString "${IniFileString}"
+}
+
+if (-not $SkipIfNoChanges.IsPresent) {
+	$IniFileString = Get-IniParameter "SkipIfNoChanges" "${FQDN}"
+	$SkipIfNoChanges = Is-TrueString "${IniFileString}"
 }
 
 if ([string]::IsNullOrEmpty($lnPath)) {
@@ -1140,6 +1150,7 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				$ln_error = $false
 			}
 
+			#Here we initialize $summary first time
 			$summary = ""
 			if ($LogFile) {
 				$backup_response = get-content "$LogFile"
@@ -1174,6 +1185,23 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				}
 			}
 
+			#.PARAMETER SkipIfNoChanges
+			#Parse log file for changes on source and delete backup folder if not changes.
+			#Thus, we get less backup folders and therefore less hard links. Delaying the possibility of reaching the NTFS link limit of 1023.		
+			if (($backup_response) -and ($SkipIfNoChanges -eq $True)) {
+
+				if ($StepTiming -eq $True) {
+					$stepTime = get-date -f "yyyy-MM-dd HH-mm-ss"
+				}
+
+				echo  "$stepCounter $stepTime Checking for changes (Parameter SkipIfNoChanges On)"
+				$stepCounter++
+
+				$oldBackupSourceFolders=@(SkipIfNoChanges $backup_response $actualBackupDestination$backupMappedString $oldBackupSourceFolders)
+				#Maybe last backup folder have been removed from collection, thus, set again last backup name
+				$lastBackupFolderName = $oldBackupSourceFolders[-1]
+			}
+			
 			if ($StepTiming -eq $True) {
 				$stepTime = get-date -f "yyyy-MM-dd HH-mm-ss"
 			}
@@ -1199,8 +1227,8 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 			
 			#plus 1 because we just created a new backup but we have checked for old backups before we have
 			#created the new one and want to keep them
-			$backupsToDelete=$lastBackupFolders.length+1
-			$echo=("Selected $backupsToDelete old backup(s) to delete.")
+			$totalBackupsToDelete=$lastBackupFolders.length+1
+			$echo=("Selected $totalBackupsToDelete old backup(s) to delete.")
 			Write-Host "$echo`n"
 			$summary+="`r`n$echo`r`n"
 
@@ -1212,30 +1240,17 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 			WriteLog $summary
 			$emailBody = $emailBody + $summary
 
-			$backupsToDelete=($backupsToDelete - $backupsToKeep)
-			if($lastBackupFolders.length -gt $backupsToDelete)
+			$totalBackupsToDelete=($totalBackupsToDelete - $backupsToKeep)
+			if($lastBackupFolders.length -gt $totalBackupsToDelete)
 			{
-				$lastBackupFolders=$lastBackupFolders[0..($backupsToDelete - 1)]
+				$lastBackupFolders=$lastBackupFolders[0..($totalBackupsToDelete - 1)]
 			}
 
 			#END PARAMETER backupsToKeep
 
 			#Allways lastBackupFolders items will be deleted!!
-			if ($lastBackupFolders.length -gt 0) {
-				DeleteBackupFolders $lastBackupFolders
+			DeleteBackupFolders $lastBackupFolders
 
-				$summary = "`nDeleted $backupsToDelete old backup(s)`n"
-				Write-Host $summary
-				WriteLog $summary
-				$emailBody = $emailBody + $summary
-
-			} else {
-				$summary = "`nNo old backups were deleted`n"
-				Write-Host $summary
-				WriteLog $summary
-				$emailBody = $emailBody + $summary
-
-			}
 		} else {
 			# The backup source does not exist - there was no point processing this source.
 			$output = "ERROR: Backup source does not exist - $backup_source - backup NOT done for this source`r`n"

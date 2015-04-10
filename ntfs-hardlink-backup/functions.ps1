@@ -585,8 +585,6 @@ Function DeleteBackupFolders
 			{
 				$folderToDelete =  $selectedBackupDestination +"\"+ $folder
 
-				if($dryrun -eq $False) 
-				{
 				$echo="Deleting $folderToDelete"
 
 				if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
