@@ -59,7 +59,7 @@ Function ShowArray
 	#>
 	[CmdletBinding()]
 	Param(
-		[ValidateNotNullOrEmpty()]
+		[AllowEmptyCollection()]
 		[Parameter(Mandatory=$True)]
 		[array]$arraytoshow,
 		[ValidateNotNullOrEmpty()]
@@ -226,7 +226,7 @@ Function GetTimeSpanFolders
 	#>
 	[CmdletBinding()]
 	Param(
-		[ValidateNotNullOrEmpty()]
+		[AllowEmptyCollection()]
 		[Parameter(Mandatory=$True)]
 		[Array]$folders,
 		[ValidateNotNullOrEmpty()]
@@ -477,7 +477,7 @@ Function GetAllBackupsSourceItems
 		If not provided, it will take all folders "backup type"
 
 	.Outputs
-		Hashtable oldBackupSourceFolders
+		Hashtable lastBackupFolders
 
 	.Example
 		$oldBackupFolders=@(GetAllBackupsSourceItems $selectedBackupDestination $backup_source_folder_escaped)
@@ -510,7 +510,7 @@ Function GetAllBackupsSourceItems
 		$oldBackupItems = Get-ChildItem -Force -Path $BackupDestination | Where-Object {$_ -is [IO.DirectoryInfo]} | Sort-Object -Property Name
 
 		# Contains the list of the backups belonging to source
-		$oldBackupSourceFolders = @()
+		$lastBackupFolders = @()
 		
 		if(!$EscapedBackupSourceFolder)
 		{
@@ -524,11 +524,11 @@ Function GetAllBackupsSourceItems
 		foreach ($item in $oldBackupItems) 
 		{
 			if ($item.Name  -match $matchString ) {
-				$oldBackupSourceFolders += $item.name
+				$lastBackupFolders += $item.name
 			}
 		}
 		
-		return $oldBackupSourceFolders
+		return $lastBackupFolders
 		
 		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
     }
@@ -738,7 +738,7 @@ Function DeleteLogFiles
 		[ValidateNotNullOrEmpty()]
 		[Parameter(Mandatory=$True)]
 		[String]$logFileDestination,
-		[ValidateNotNullOrEmpty()]
+		[AllowEmptyCollection()]
 		[Parameter(Mandatory=$True)]
 		[Array]$folderNames,
 		[Parameter(Mandatory=$False)]

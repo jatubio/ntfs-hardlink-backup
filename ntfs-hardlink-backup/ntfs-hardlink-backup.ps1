@@ -111,6 +111,8 @@
 .PARAMETER SkipIfNoChanges
 	Check log file for changes on source and delete backup folder if not changes.
 	Thus, we get less backup folders and therefore less hard links. Delaying the possibility of reaching the NTFS link limit of 1023.
+.PARAMETER ClosestRotation
+	Strategy of snapshot rotation keeping the most closest and the first backup in a time period.
 .PARAMETER version
 	print the version information and exit.	
 .EXAMPLE
@@ -203,6 +205,8 @@ Param(
 	[switch]$LogVerbose=$False,
 	[Parameter(Mandatory=$False)]
 	[switch]$SkipIfNoChanges,
+	[Parameter(Mandatory=$False)]
+	[switch]$ClosestRotation,
 	[Parameter(Mandatory=$False)]
 	[switch]$version=$False
 )
@@ -341,6 +345,8 @@ if ($backupsToKeep -eq 0) {
 		$backupsToKeep = 50;
 	}
 }
+#PARAMETER backupsToKeep applied to logFiles
+$logFilesToKeep=$backupsToKeep
 
 if ($backupsToKeepPerYear -eq 0) {
 	$backupsToKeepPerYear = Get-IniParameter "backupsToKeepPerYear" "${FQDN}"
@@ -602,13 +608,25 @@ if (-not $LogVerbose.IsPresent) {
 	$LogVerbose = Is-TrueString "${IniFileString}"
 }
 
+#SkipIfNoChanges parameter
 if (-not $SkipIfNoChanges.IsPresent) {
 	$IniFileString = Get-IniParameter "SkipIfNoChanges" "${FQDN}"
 	$SkipIfNoChanges = Is-TrueString "${IniFileString}"
 }
 
+#ClosestRotation parameter
+if (-not $ClosestRotation.IsPresent) {
+	$IniFileString = Get-IniParameter "ClosestRotation" "${FQDN}"
+	$ClosestRotation = Is-TrueString "${IniFileString}"
+}
+
 if ([string]::IsNullOrEmpty($lnPath)) {
 	$lnPath = Get-IniParameter "lnPath" "${FQDN}"
+}
+
+if (-not $ClosestRotation.IsPresent) {
+	$IniFileString = Get-IniParameter "ClosestRotation" "${FQDN}"
+	$ClosestRotation = Is-TrueString "${IniFileString}"
 }
 
 #if lnPath is not given in the ini file nor on the command line or its not there try to find it somewhere else
@@ -1036,8 +1054,8 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				}
 				
 				# Contains the list of the backups belonging to source
-				$oldBackupSourceFolders = @(GetAllBackupsSourceItems $selectedBackupDestination $escaped_backup_source_folder)
-				$lastBackupFolderName = $oldBackupSourceFolders[-1]
+				$lastBackupFolders = @(GetAllBackupsSourceItems $selectedBackupDestination $escaped_backup_source_folder)
+				$lastBackupFolderName = $lastBackupFolders[-1]
 			}
 			
 			if ($traditional -eq $True) {
@@ -1197,9 +1215,9 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				echo  "$stepCounter $stepTime Checking for changes (Parameter SkipIfNoChanges On)"
 				$stepCounter++
 
-				$oldBackupSourceFolders=@(SkipIfNoChanges $backup_response $actualBackupDestination$backupMappedString $oldBackupSourceFolders)
+				$lastBackupFolders=@(SkipIfNoChanges $backup_response $actualBackupDestination$backupMappedString $lastBackupFolders)
 				#Maybe last backup folder have been removed from collection, thus, set again last backup name
-				$lastBackupFolderName = $oldBackupSourceFolders[-1]
+				$lastBackupFolderName = $lastBackupFolders[-1]
 			}
 			
 			if ($StepTiming -eq $True) {
@@ -1209,16 +1227,19 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 			echo  "$stepCounter. $stepTime Deleting old backups"
 			$stepCounter++
 
+			#.PARAMETER ClosestRotation
+			# Strategy of snapshot rotation keeping the most closest and the first backup in a time period.
+			if ($ClosestRotation -eq $True) {				
+				$lastBackupFolders=@(ClosestRotation $lastBackupFolders)
+					#Deactivate backupsToKeepPerYear
+				$backupsToKeepPerYear=0
+				$backupsToKeep=0
+			}
+
 			# Parameter backupsToKeepPerYear QQQ
-			if($oldBackupSourceFolders.length -gt 0)
+			if(($lastBackupFolders.length -gt 0) -and ($backupsToKeepPerYear -gt 0))
 			{			
-				if ($backupsToKeepPerYear -gt 0) {
-					$lastBackupFolders=@(GetBackupsToKeepPerYear $backupsToKeepPerYear $oldBackupSourceFolders $escaped_backup_source_folder)
-				}
-				else
-				{
-					$lastBackupFolders=$oldBackupSourceFolders
-				}				
+				$lastBackupFolders=@(GetBackupsToKeepPerYear $backupsToKeepPerYear $lastBackupFolders $escaped_backup_source_folder)
 			}
 
 			$summary=""
@@ -1286,10 +1307,9 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 
 		$lastLogFiles = @(GetAllLogsFiles $logFileDestination)
 
-		#INIT PARAMETER backupsToKeep applied to logFiles
+		#INIT logFilesToKeep applied to logFiles
 		
-		$logFilesToKeep=$backupsToKeep
-			# If $backupsToKeep<=0, keep at least current log file
+			# If $logFilesToKeep<=0, keep at least current log file
 		if($logFilesToKeep -le 0) {$logFilesToKeep=1}
 		
 		$summary=""
