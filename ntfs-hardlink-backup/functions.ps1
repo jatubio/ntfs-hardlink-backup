@@ -211,7 +211,7 @@ Function GetTimeSpanFolders
 		Take every parameter as years
 
 	.Outputs
-		backupsToKeep Hash
+		lastBackupsToKeep Hash
 
 	.Example
 		$DailyFolders=GetTimeSpanFolders $lastBackupFolders 10 4 -hours
@@ -259,7 +259,7 @@ Function GetTimeSpanFolders
     {
 		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
 		
-		$backupsToKeep=@()
+		$lastBackupsToKeep=@()
 		
 		if($years) {
 			$format="years"
@@ -287,7 +287,7 @@ Function GetTimeSpanFolders
 		{
 			$folderDate=GetFolderDate $folderName
 
-			if($backupsToKeep.length -lt $maxItems)
+			if($lastBackupsToKeep.length -lt $maxItems)
 			{
 				if($folderDate -lt $spanDateTime)
 				{
@@ -300,22 +300,22 @@ Function GetTimeSpanFolders
 							# If the current is closer, we get them
 						if(($lastDate - $spanDateTime) -gt ($spanDateTime - $folderDate))
 						{
-							$backupsToKeep+=$folderName
+							$lastBackupsToKeep+=$folderName
 							$lastDate=$folderDate
 						}
 						else
 						{	
-							$backupsToKeep+=$lastFolder		#Else, we get the last
+							$lastBackupsToKeep+=$lastFolder		#Else, we get the last
 						}
 					}
 					else
 					{
 						# If we haven't lastFolder, we get current
-						$backupsToKeep+=$folderName
+						$lastBackupsToKeep+=$folderName
 						$lastDate=$folderDate
 					}
 					
-					#Write-Host("Taken " + $backupsToKeep[-1])
+					#Write-Host("Taken " + $lastBackupsToKeep[-1])
 					
 					#If fixed time, we add 'every' time span to last time span date
 					if($fixedTime -eq $True)
@@ -327,7 +327,7 @@ Function GetTimeSpanFolders
 						$spanDateTime=AddDateTime (Get-Date $lastDate) $every $format
 					}
 						
-					#Write-Host("*(" + $backupsToKeep.length +")* new datetime: " + ($spanDateTime) + "`n")
+					#Write-Host("*(" + $lastBackupsToKeep.length +")* new datetime: " + ($spanDateTime) + "`n")
 				}
 
 					#If we have taken current, reset last to don't take them again
@@ -349,7 +349,7 @@ Function GetTimeSpanFolders
 		}
 		
 		#Write-Host "`n"
-		return $backupsToKeep
+		return $lastBackupsToKeep
 		
 		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
     }
@@ -563,6 +563,9 @@ Function DeleteBackupFolders
 		Simulation Mode.  Not do any writing on the hard disk, instead it 
 		will just report the actions it would have taken.
 
+	.Outside Scope Variables
+		Reads Parameters $EchoVerbose,$LogVerbose
+	
 	.Outputs
 		Nothing
 
@@ -602,18 +605,17 @@ Function DeleteBackupFolders
 		{
 			$echo=("Deleting " + $backupsToDelete.length + " old backup(s)`n")
 			if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
-			Write-Host $echo
-			$log+="`r`n$echo"
+			if($EchoVerbose) { Write-Host $echo }
+			if($LogVerbose) { $log+="`r`n$echo" }
 			
 			foreach($folder in $backupsToDelete)
 			{
 				$folderToDelete =  $backupDestination +"\"+ $folder
 
 				$echo="Deleting $folderToDelete"
-
 				if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
-				$log+="`r`n$echo"
-				Write-Host $echo
+				if($EchoVerbose) { Write-Host $echo }
+				if($LogVerbose) { $log+="`r`n$echo" }
 				
 				if($dryrun -eq $False)
 				{
@@ -818,11 +820,17 @@ Function DeleteLogFiles
 		{
 			$echo=("Deleting " + $logFilesDeleted + " old log file(s)")
 			if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
-			$log+="$echo`r`n"
+			if($LogVerbose) 
+			{ 
+				$log+="$echo`r`n"
+				$log+="`r`n$logDeleted"
+			}
 			
-			$echo+="`n`n$echoDeleted"
-			Write-Host "$echo"
-			$log+="`r`n$logDeleted"
+			if($EchoVerbose) 
+			{ 
+				$echo+="`n`n$echoDeleted"
+				Write-Host "$echo"
+			}
 
 			$echo="Deleted " + $logFilesDeleted +" old log files(s)"
 			if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
@@ -1102,4 +1110,150 @@ Function WaitForKey
 		Write-Host "Press any key to continue ..."	
 		$x = $host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
     }
+}
+
+Function StepCounter
+{
+	<#
+	.Synopsis
+		Keeps one incremental StepCounter and shows one text
+		about next step process.		
+
+	.Description
+		Based on original source code.
+		Will show datetime stamp if global parameter $StepTiming is on
+	
+	.Notes
+		Author    : Juan Antonio Tubio <jatubio@gmail.com>				
+		GitHub    : https://github.com/jatubio
+		Date      : 2015/04/11
+		Version   : 1.0
+
+	.Parameter text
+		Text to show
+
+	.Parameter counter
+		Value to set the counter
+
+	.Outside Scope Variables
+		Reads Parameter $StepTiming
+		
+	.Outputs
+		Nothing
+
+	.Example
+		StepCounter "Deleting log file(s)"
+
+	.Example
+		StepCounter "Starting" 1
+		------
+		Set the counter to 1 and show "1. Starting"
+
+	.Example
+		StepCounter 1
+		------
+		Set the counter to 1, not show nothing
+
+	#>
+	[CmdletBinding()]
+	Param(
+		[Parameter(Mandatory=$False)]
+		[String]$text,
+		[Parameter(Mandatory=$False)]
+		[Int32]$counter
+	)
+
+	Begin
+		{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function started"}
+
+	Process
+    {
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
+
+		if($counter)
+		{
+			$script:static_stepCounter=$counter
+		}
+
+		if($script:static_stepCounter -le 1)
+		{
+			$script:static_stepCounter=1
+		}
+		
+		if($text)
+		{			
+			if ($StepTiming -eq $True) {
+				$stepTime = get-date -f "yyyy-MM-dd HH-mm-ss"
+			}
+			$echo="`n$script:static_stepCounter. $stepTime $text`n"
+			
+			Write-Host "$echo"
+			WriteLog "$echo"
+
+			$script:static_stepCounter++
+		}
+		
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
+    }
+
+    End
+	{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function ended"}
+}
+
+Function Verbose
+{
+	<#
+	.Synopsis
+		Check for $EchoVerbose and $LogVerbose and show text on screen/log file
+
+	.Description
+
+	.Notes
+		Author    : Juan Antonio Tubio <jatubio@gmail.com>
+		GitHub    : https://github.com/jatubio
+		Date      : 2015/04/11
+		Version   : 1.0
+
+	.Parameter text
+		Specifies the text to show/write on log file
+
+	.Outputs
+		Nothing
+
+	.Outside Scope Variables
+		Reads Parameters $EchoVerbose,$LogVerbose
+	
+	.Example
+		Verbose "This is a verbose message"
+
+	#>
+	[CmdletBinding()]
+	Param(
+		[ValidateNotNullOrEmpty()]
+		[Parameter(Mandatory=$True)]
+		[string]$text
+	)
+
+	Begin
+		{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function started"}
+
+	Process
+    {
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
+
+		if($EchoVerbose)
+		{
+			Write-Host $text
+		}
+
+		if($LogVerbose)
+		{
+			WriteLog "$text"
+		}
+		
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
+    }
+
+    End
+	{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function ended"}
 }

@@ -108,11 +108,15 @@
 	see http://schinagl.priv.at/nt/ln/ln.html#unroll
 .PARAMETER LogVerbose
 	Increase verbosity of messages on the logfile.
+.PARAMETER EchoVerbose
+	Increase verbosity of messages on the screen.
 .PARAMETER SkipIfNoChanges
 	Check log file for changes on source and delete backup folder if not changes.
 	Thus, we get less backup folders and therefore less hard links. Delaying the possibility of reaching the NTFS link limit of 1023.
 .PARAMETER ClosestRotation
 	Strategy of snapshot rotation keeping the most closest and the first backup in a time period.
+	Other strategies such backupsToKeep and backupsToKeepPerYear will be accumulated.
+	If you want to disable some of these, set them to 1.
 .PARAMETER version
 	print the version information and exit.	
 .EXAMPLE
@@ -204,13 +208,15 @@ Param(
 	[Parameter(Mandatory=$False)]
 	[switch]$LogVerbose=$False,
 	[Parameter(Mandatory=$False)]
+	[switch]$EchoVerbose=$False,
+	[Parameter(Mandatory=$False)]
 	[switch]$SkipIfNoChanges,
 	[Parameter(Mandatory=$False)]
 	[switch]$ClosestRotation,
 	[Parameter(Mandatory=$False)]
 	[switch]$version=$False
 )
-
+Set-StrictMode -version 2	# For debugging &&&
 #The path and filename of the script it self
 $script_path = Split-Path -parent $MyInvocation.MyCommand.Definition
 
@@ -290,27 +296,27 @@ $substDone = $False
 $versionString=Get-Version
 
 if ($version) {
-	echo $versionString
+	Write-Host $versionString
 	exit
 } else {
 	$output = "NTFS-HARDLINK-BACKUP $versionString`r`n"
 	$emailBody = "$emailBody`r`n$output`r`n"
-	$tempLogContent += $output
-	echo $output
+	$tempLogContent += "$output`r`n"
+	Write-Host $output
 }
 
 if ($iniFile) {
 	if (Test-Path -Path $iniFile -PathType leaf) {
 		$output = "Using ini file`r`n$iniFile`r`n"
-		$emailBody = "$emailBody`r`n$output`r`n"
-		echo $output
 		$global:iniFileContent = Get-IniContent "${iniFile}"
 	} else {
 		$global:iniFileContent =  New-Object System.Collections.Specialized.OrderedDictionary
 		$output = "ERROR: Could not find ini file`r`n$iniFile`r`n"
-		$emailBody = "$emailBody`r`n$output`r`n"
-		echo $output
 	}
+
+	$emailBody = "$emailBody`r`n$output`r`n"
+	Write-Host $output
+	$tempLogContent += "$output`r`n"
 } else {
 		$global:iniFileContent =  New-Object System.Collections.Specialized.OrderedDictionary
 }
@@ -496,7 +502,7 @@ if (![string]::IsNullOrEmpty($localSubnetMask)) {
 		# The string is not a valid network mask.
 		# It should be something like 255.255.255.0
 		$output = "`nERROR: localSubnetMask $localSubnetMask is not valid`n"
-		echo $output
+		Write-Host $output
 		$emailBody = "$emailBody`r`n$output`r`n"
 
 		$tempLogContent += $output
@@ -557,7 +563,7 @@ if (![string]::IsNullOrEmpty($preExecutionCommand)) {
 	}
 	
 	$output += "`n"
-	echo $output
+	Write-Host $output
 	$tempLogContent += $output
 	}
 	
@@ -569,9 +575,8 @@ if ($preExecutionDelay -eq 0) {
 	}
 }
 
-
 if ($preExecutionDelay -gt 0) {
-	echo "I'm gona be lazy now"
+	Write-Host "I'm gona be lazy now"
 
 	Write-Host -NoNewline "
 
@@ -608,6 +613,12 @@ if (-not $LogVerbose.IsPresent) {
 	$LogVerbose = Is-TrueString "${IniFileString}"
 }
 
+#EchoVerbose parameter
+if (-not $EchoVerbose.IsPresent) {
+	$IniFileString = Get-IniParameter "EchoVerbose" "${FQDN}"
+	$EchoVerbose = Is-TrueString "${IniFileString}"
+}
+
 #SkipIfNoChanges parameter
 if (-not $SkipIfNoChanges.IsPresent) {
 	$IniFileString = Get-IniParameter "SkipIfNoChanges" "${FQDN}"
@@ -622,11 +633,6 @@ if (-not $ClosestRotation.IsPresent) {
 
 if ([string]::IsNullOrEmpty($lnPath)) {
 	$lnPath = Get-IniParameter "lnPath" "${FQDN}"
-}
-
-if (-not $ClosestRotation.IsPresent) {
-	$IniFileString = Get-IniParameter "ClosestRotation" "${FQDN}"
-	$ClosestRotation = Is-TrueString "${IniFileString}"
 }
 
 #if lnPath is not given in the ini file nor on the command line or its not there try to find it somewhere else
@@ -646,11 +652,10 @@ if ([string]::IsNullOrEmpty($lnPath) -or !(Test-Path -Path $lnPath -PathType lea
 	}
 }
 
-#LogVerbosing. Showing ln.exe path 
-if($LogVerbose)
-{
-	$tempLogContent += "`r`nUsing ln.exe from: $lnPath"
-}
+#Verbosing. Showing ln.exe path 
+$echo="Using ln.exe from: $lnPath`n"
+if($LogVerbose) {$tempLogContent += "$echo"}
+if($EchoVerbose) {Write-Host "$echo"}
 
 #try to run ln.exe just to check if it can start. Possible that the ln version does not fit the Windows version (e.g. 64bit installed on a 32bit system)
 $output=`cmd /c "`"$lnPath`"  -h" 2`>`&1`
@@ -658,7 +663,7 @@ $output=`cmd /c "`"$lnPath`"  -h" 2`>`&1`
 #if we could not find ln.exe, there is no point in trying to make a backup
 if ([string]::IsNullOrEmpty($lnPath) -or !(Test-Path -Path $lnPath -PathType leaf) -or ($LASTEXITCODE -ne 0) ) {
 	$output += "`nERROR: could not run ln.exe`n"
-	echo $output
+	Write-Host $output
 	$emailBody = "$emailBody`r`n$output`r`n"
 	
 	$tempLogContent += $output
@@ -672,7 +677,7 @@ if ([string]::IsNullOrEmpty($backupDestination)) {
 	# No backup destination on command line or in INI file
 	# backup destination is mandatory, so flag the problem.
 	$output = "`nERROR: No backup destination specified`n"
-	echo $output
+	Write-Host $output
 	$emailBody = "$emailBody`r`n$output`r`n"
 	
 	$tempLogContent += $output
@@ -704,7 +709,7 @@ if ([string]::IsNullOrEmpty($backupDestination)) {
 				}
 				catch {
 					$output = "`nERROR: Destination was not found and could not be created. $_`n"
-					echo $output
+					Write-Host $output
 					$emailBody = "$emailBody`r`n$output`r`n"
 					
 					$tempLogContent += $output
@@ -712,7 +717,7 @@ if ([string]::IsNullOrEmpty($backupDestination)) {
 				
 			} else {
 				$output = "`nERROR: subst parameter $subst is invalid`n"
-				echo $output
+				Write-Host $output
 				$emailBody = "$emailBody`r`n$output`r`n"
 				
 				$tempLogContent += $output
@@ -812,7 +817,7 @@ if ([string]::IsNullOrEmpty($backupDestination)) {
 				$output = "ERROR: Could not get IP address for destination $possibleBackupDestination mapped to $backupMappedPath"
 				$emailBody = "$emailBody`r`n$output`r`n$_"
 				$error_during_backup = $true
-				echo $output  $_
+				Write-Host $output  $_
 			}
 		}
 
@@ -858,26 +863,22 @@ catch
 {
 	$output = "ERROR: Could not create new log file`r`n$_`r`n"
 	$emailBody = "$emailBody`r`n$output`r`n"
-	echo $output
+	Write-Host $output
 	$LogFile=""
 	$error_during_backup = $True
 	$deleteOldLogFiles = $False
 }
 
 #write the logs from the time we hadn't a logfile into the file
-if ($LogFile) {
-	$tempLogContent | Out-File "$LogFile"  -encoding ASCII -append
-}
+WriteLog $tempLogContent
 
 if ([string]::IsNullOrEmpty($backupSources)) {
 	# No backup sources on command line, in host-specific or common section of ini file
 	# backup sources are mandatory, so flag the problem.
 	$output = "`nERROR: No backup source(s) specified`n"
-	echo $output
+	Write-Host $output
 	$emailBody = "$emailBody`r`n$output`r`n"
-	if ($LogFile) {
-		$output | Out-File "$LogFile"  -encoding ASCII -append
-	}
+	WriteLog $output
 	$parameters_ok = $False
 }
 
@@ -885,6 +886,9 @@ if ([string]::IsNullOrEmpty($backupSources)) {
 if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backupDestinationTop)) {
 	foreach ($backup_source in $backupSources)
 	{
+		# Restart Stepcounter to 1
+		StepCounter -counter 1
+		
 		#We don't want to have "\" at the end because we will quote the path later and ln.exe would 
 		#treat this as escaping of the quote (\") and can not parse the command line.
 		#ln --copy "x:\" y:\dir\newdir 
@@ -894,7 +898,6 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 		}
 
 		if (test-path -LiteralPath $backup_source) {
-			$stepCounter = 1
 			$backupSourceArray = $backup_source.split("\")
 			if (($backupSourceArray[0] -eq "") -and ($backupSourceArray[1] -eq "")) {
 				# The source is a UNC path (file share) which has no drive letter. We cannot do volume shadowing from that.
@@ -927,28 +930,24 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				$actualBackupDestination = "$actualBackupDestination - $dateTime"
 			}
 
-			echo "============Creating Backup of $backup_source============"
+			$echo="============Creating Backup of $backup_source============"
+			Write-Host $echo
+			WriteLog "$echo"
+			
 			if ($NoShadowCopy -eq $False) {
 				if ($backup_source_drive_letter -ne "") {
 				# We can try processing a shadow copy.
 					if ($shadow_drive_letter -eq $backup_source_drive_letter) {
 						# The previous shadow copy must have succeeded because $NoShadowCopy is still false, and we are looping around with a matching shadow drive letter.
-						if ($StepTiming -eq $True) {
-							$stepTime = get-date -f "yyyy-MM-dd HH-mm-ss"
-						}
-						echo "$stepCounter. $stepTime Re-using previous Shadow Volume Copy"
-						$stepCounter++
+						
+						StepCounter "Re-using previous Shadow Volume Copy"
 						$backup_source_path = $s2.DeviceObject+$backup_source_path
 					} else {
 						if ($num_shadow_copies -gt 0) {
 							# Delete the previous shadow copy that was from some other drive letter
 							foreach ($shadowCopy in $shadowCopies) {
 								if ($s2.ID -eq $shadowCopy.ID) {
-									if ($StepTiming -eq $True) {
-										$stepTime = get-date -f "yyyy-MM-dd HH-mm-ss"
-									}
-									echo  "$stepCounter. $stepTime Deleting previous Shadow Copy"
-									$stepCounter++
+									StepCounter "Deleting previous Shadow Copy"
 									try {
 										$shadowCopy.Delete()
 									}
@@ -956,19 +955,15 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 										$output = "ERROR: Could not delete Shadow Copy"
 										$emailBody = "$emailBody`r`n$output`r`n$_"
 										$error_during_backup = $true
-										echo $output  $_
+										Write-Host $output  $_
 									}
 									$num_shadow_copies--
-									echo "done`n"
+									Write-Host "done`n"
 									break
 								}
 							}
 						}
-						if ($StepTiming -eq $True) {
-							$stepTime = get-date -f "yyyy-MM-dd HH-mm-ss"
-						}
-						echo "$stepCounter. $stepTime Creating Shadow Volume Copy"
-						$stepCounter++
+						StepCounter "Creating Shadow Volume Copy"
 						try {
 							$s1 = (gwmi -List Win32_ShadowCopy).Create("$backup_source_drive_letter\", "ClientAccessible")
 							$s2 = gwmi Win32_ShadowCopy | ? { $_.ID -eq $s1.ShadowID }
@@ -978,12 +973,14 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 								throw "Shadow Copy Creation failed. Return Code: " + $s1.ReturnValue
 							}
 
-							echo "Shadow Volume ID: $($s2.ID)"
-							echo "Shadow Volume DeviceObject: $($s2.DeviceObject)"
-
+							$echo="Shadow Volume ID: $($s2.ID)"
+							$echo+="`nShadow Volume DeviceObject: $($s2.DeviceObject)"
+							Write-Host $echo
+							WriteLog "$echo`n"
+							
 							$shadowCopies = Get-WMIObject -Class Win32_ShadowCopy
 
-							echo "done`n"
+							Write-Host "done`n"
 
 							$backup_source_path = $s2.DeviceObject+$backup_source_path
 							$num_shadow_copies++
@@ -993,56 +990,53 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 							$output = "ERROR: Could not create Shadow Copy`r`n$_ `r`nATTENTION: Skipping creation of Shadow Volume Copy. ATTENTION: if files are changed during the backup process, they might end up being corrupted in the backup!`r`n"
 							$emailBody = "$emailBody`r`n$output`r`n"
 							$error_during_backup = $true
-							echo $output
-							if ($LogFile) {
-								$output | Out-File "$LogFile" -encoding ASCII -append
-							}
+
+							Write-Host $output
+							WriteLog "$output"
+
 							$backup_source_path = $backup_source
 							$NoShadowCopy = $True
 						}
 					}
 				} else {
 					# We were asked to do shadow copy but the source is a UNC path.
-					$output = "Skipping creation of Shadow Volume Copy because source is a UNC path `r`nATTENTION: if files are changed during the backup process, they might end up being corrupted in the backup!`n"
-					if ($StepTiming -eq $True) {
-						$stepTime = get-date -f "yyyy-MM-dd HH-mm-ss"
-					}
-					echo "$stepCounter. $stepTime $output"
-					if ($LogFile) {
-						$output | Out-File "$LogFile" -encoding ASCII -append
-					}
-					$stepCounter++
+					$output = "Skipping creation of Shadow Volume Copy because source is a UNC path"
+					StepCounter "$output"
+					$echo="ATTENTION: if files are changed during the backup process, they might end up being corrupted in the backup!`n"
+					Write-Host $echo
+					WriteLog "$echo"					
 					$backup_source_path = $backup_source
 				}
 			}
 			else {
-				$output = "Skipping creation of Shadow Volume Copy `r`nATTENTION: if files are changed during the backup process, they might end up being corrupted in the backup!`n"
-				if ($StepTiming -eq $True) {
-					$stepTime = get-date -f "yyyy-MM-dd HH-mm-ss"
-				}
-				echo "$stepCounter. $stepTime $output"
-				if ($LogFile) {
-					$output | Out-File "$LogFile" -encoding ASCII -append
-				}
-				$stepCounter++
+				$output = "Skipping creation of Shadow Volume Copy"
+				StepCounter "$output"
+				$echo="ATTENTION: if files are changed during the backup process, they might end up being corrupted in the backup!"
+				Write-Host $echo
+				WriteLog "$echo"					
 				$backup_source_path = $backup_source
 			} # End of check for ShadowCopy
 
-			if ($StepTiming -eq $True) {
-				$stepTime = get-date -f "yyyy-MM-dd HH-mm-ss"
-			}
-			echo "$stepCounter. $stepTime Running backup"
-			$stepCounter++
-			echo "Source: $backup_source_path"
-			echo "Destination: $actualBackupDestination$backupMappedString"
+			StepCounter "Running backup"
+
+			$echo="Source: $backup_source_path"
+			$echo+="`nDestination: $actualBackupDestination$backupMappedString`n"
+			Write-Host $echo
+			WriteLog "$echo"
 
 			$yearBackupsKeptText = ""
 			#It's used by delorean copy as source folder
 			$lastBackupFolderName = ""
-			# Contains the list of all the old backups to be deleted
-			# To keep one backup, remove from this list
+			# Contains the list of the old all backups to be checked for delete
 			$lastBackupFolders = @()
-
+			# Contains the list of the backups to keep
+			# To keep one backup, add to this list
+			$lastBackupsToKeep = @()
+			# Name of current backup folder.
+			# You can use to filter current backup from collections like $lastBackupsToKeep and $lastBackupFolders
+			$currentBackupFolderName="$backup_source_folder - $dateTime"
+			WaitForKey "$currentBackupFolderName"	# &&&
+				
 			If (Test-Path $selectedBackupDestination -pathType container) {
 
 				#escape $backup_source_folder if we are doing backup of a full disk like D:\ to folder [D]
@@ -1055,7 +1049,10 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				
 				# Contains the list of the backups belonging to source
 				$lastBackupFolders = @(GetAllBackupsSourceItems $selectedBackupDestination $escaped_backup_source_folder)
-				$lastBackupFolderName = $lastBackupFolders[-1]
+				if($lastBackupFolders.length -gt 0)
+				{
+					$lastBackupFolderName = $lastBackupFolders[-1]
+				}
 			}
 			
 			if ($traditional -eq $True) {
@@ -1125,36 +1122,36 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 
 			$unrollLogMessage="Using Unroll mode:`r`n`tAll Outer Junctions/Symlink Directories will be rebuild inside the hierarchy at the destination location.`r`n`tOuter Symlink Files will be copied to the destination location.`r`n`tsee http://schinagl.priv.at/nt/ln/ln.html#unroll for more information.`r`n"
 			if ($lastBackupFolderName -eq "" ) {
-				echo "Full copy from $backup_source_path to $actualBackupDestination$backupMappedString"
-				if ($LogFile) {
-					"`r`nFull copy from $backup_source_path to $actualBackupDestination$backupMappedString" | Out-File "$LogFile"  -encoding ASCII -append
-					if ($unroll -eq $True) {
-						echo $unrollLogMessage | Out-File "$LogFile"  -encoding ASCII -append
-					}
-				}
+				WaitForKey "Vacío"	# &&&
 			
 				#echo "$lnPath $commonArgumentString --copy `"$backup_source_path`" `"$actualBackupDestination`"    $logFileCommandAppend"
 				$cmdString="`"$lnPath`" $commonArgumentString --copy `"$backup_source_path`" `"$actualBackupDestination`""
-				#LogVerbosing. Showing ln.exe command line
-				if ($LogVerbose -and $LogFile) {
-					"$cmdString`r`n" | Out-File "$LogFile"  -encoding ASCII -append
-				}
+
+				$echo="Full copy from $backup_source_path to $actualBackupDestination$backupMappedString`n"
+				Write-Host $echo
+				WriteLog "$echo"
+				
+				#Verbosing. Showing ln.exe command line
+				if($unroll -eq $True) {Verbose $unrollLogMessage}
+				Verbose $cmdString
+				
 				`cmd /c  "`"$cmdString $logFileCommandAppend 2`>`&1 `""`
 			} else {
-				echo "Delorean copy from $backup_source_path to $actualBackupDestination$backupMappedString against $selectedBackupDestination\$lastBackupFolderName"
-				if ($LogFile) {
-					"`r`nDelorean copy from $backup_source_path to $actualBackupDestination$backupMappedString against $selectedBackupDestination\$lastBackupFolderName" | Out-File "$LogFile"  -encoding ASCII -append
-					if ($unroll -eq $True) {
-						echo $unrollLogMessage | Out-File "$LogFile"  -encoding ASCII -append
-					}
-				}
+				($lastBackupFolders)	# &&&
+				("A $lastBackupFolderName A")	# &&&
+				WaitForKey "Lleno"	# &&&
 
 				#echo "$lnPath $commonArgumentString --delorean `"$backup_source_path`" `"$selectedBackupDestination\$lastBackupFolderName`" `"$actualBackupDestination`" $logFileCommandAppend"
 				$cmdString="`"$lnPath`" $commonArgumentString --delorean `"$backup_source_path`" `"$selectedBackupDestination\$lastBackupFolderName`" `"$actualBackupDestination`""
-				#LogVerbosing. Showing ln.exe command line
-				if ($LogVerbose -and $LogFile) {
-					"$cmdString`r`n" | Out-File "$LogFile"  -encoding ASCII -append
-				}
+
+				$echo="Delorean copy from $backup_source_path to $actualBackupDestination$backupMappedString against $selectedBackupDestination\$lastBackupFolderName`n"
+				Write-Host $echo
+				WriteLog "$echo"
+				
+				#Verbosing. Showing ln.exe command line
+				if($unroll -eq $True) {Verbose $unrollLogMessage}
+				Verbose $cmdString
+
 				`cmd /c  "`"$cmdString $logFileCommandAppend 2`>`&1 `""`
 			}
 			
@@ -1185,125 +1182,137 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				}
 			}
 
-			echo "done`n"
+			Write-Host "done`n"
 
 			$summary = "`n------Summary-----`nBackup AT: $start_time FROM: $backup_source TO: $selectedBackupDestination$backupMappedString`n" + $summary
-			echo $summary
-
+			Write-Host $summary
+			WriteLog "`$summary`r`n"
+			
 			$emailBody = $emailBody + $summary
-
-			echo "`n"
 
 			if ($ln_error)
 			{
 				$emailBody = "$emailBody`r$output`r`n"
-				echo $output
-				if ($LogFile) {
-					$output | Out-File "$LogFile" -encoding ASCII -append
+				Write-Host $output
+				WriteLog $output
+			}
+			else
+			{
+					# Add current backup to lastBackupsToKeep
+				$lastBackupsToKeep+=$currentBackupFolderName
+			}
+
+				# If error on ln.exe, we will do nothing
+			if($ln_error -eq $False)
+			{
+				#.PARAMETER SkipIfNoChanges
+				#Parse log file for changes on source and delete backup folder if not changes.
+				#Thus, we get less backup folders and therefore less hard links. Delaying the possibility of reaching the NTFS link limit of 1023.		
+				if (($backup_response) -and ($SkipIfNoChanges -eq $True)) {
+
+					StepCounter "Checking for changes (Parameter SkipIfNoChanges On)"
+
+					Write-Host ("Before " + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&
+
+						# If changes, current scope $lastBackupsToKeep and $lastBackupFolders will be updated
+					SkipIfNoChanges $backup_response $actualBackupDestination$backupMappedString $currentBackupFolderName
+					#Maybe last backup folder have been removed from collection, thus, set again last backup name
+					#$lastBackupFolderName = $lastBackupFolders[-1]		ZZZ	Don't need because it's not used later
+					WaitForKey ("After " + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&QQQ
 				}
-			}
+				
+				StepCounter "Deleting old backups"
 
-			#.PARAMETER SkipIfNoChanges
-			#Parse log file for changes on source and delete backup folder if not changes.
-			#Thus, we get less backup folders and therefore less hard links. Delaying the possibility of reaching the NTFS link limit of 1023.		
-			if (($backup_response) -and ($SkipIfNoChanges -eq $True)) {
-
-				if ($StepTiming -eq $True) {
-					$stepTime = get-date -f "yyyy-MM-dd HH-mm-ss"
+				#.PARAMETER ClosestRotation
+				# Strategy of snapshot rotation keeping the most closest and the first backup in a time period.
+				if ($ClosestRotation -eq $True) {				
+					Write-Host ("Before " + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&
+					$lastBackupsToKeep=@(ClosestRotation $lastBackupsToKeep $lastBackupFolders)
+					# Filter lastBackupFolders with the new lastBackupsToKeep
+					$lastBackupFolders = @(ArrayFilter $lastBackupFolders $lastBackupsToKeep)
+					WaitForKey ("After " + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&QQQ
 				}
 
-				echo  "$stepCounter $stepTime Checking for changes (Parameter SkipIfNoChanges On)"
-				$stepCounter++
+				# Parameter backupsToKeepPerYear QQQ
+				if(($lastBackupFolders.length -gt 0) -and ($backupsToKeepPerYear -gt 0))
+				{			
+					Write-Host ("Before " + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&
+					$lastBackupsToKeep=@(GetBackupsToKeepPerYear $backupsToKeepPerYear $lastBackupsToKeep $lastBackupFolders $escaped_backup_source_folder)
+					# Filter lastBackupFolders with the new lastBackupsToKeep
+					$lastBackupFolders = @(ArrayFilter $lastBackupFolders $lastBackupsToKeep)
+					WaitForKey ("After " + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&QQQ
+				}
 
-				$lastBackupFolders=@(SkipIfNoChanges $backup_response $actualBackupDestination$backupMappedString $lastBackupFolders)
-				#Maybe last backup folder have been removed from collection, thus, set again last backup name
-				$lastBackupFolderName = $lastBackupFolders[-1]
-			}
-			
-			if ($StepTiming -eq $True) {
-				$stepTime = get-date -f "yyyy-MM-dd HH-mm-ss"
-			}
+				$summary=""
 
-			echo  "$stepCounter. $stepTime Deleting old backups"
-			$stepCounter++
+				#INIT PARAMETER backupsToKeep				
+				$totalBackupsToDelete=$lastBackupFolders.length
+				if($totalBackupsToDelete -gt 0)
+				{
+					if($totalBackupsToDelete -gt $backupsToKeep)
+					{					
+						$echo="Selected $totalBackupsToDelete old backup(s) to delete."
+						Write-Host "$echo`n"
+						$summary+="`r`n$echo`r`n"
 
-			#.PARAMETER ClosestRotation
-			# Strategy of snapshot rotation keeping the most closest and the first backup in a time period.
-			if ($ClosestRotation -eq $True) {				
-				$lastBackupFolders=@(ClosestRotation $lastBackupFolders)
-					#Deactivate backupsToKeepPerYear
-				$backupsToKeepPerYear=0
-				$backupsToKeep=0
-			}
+						$echo="Keeping a maximum of $backupsToKeep regular backup(s)."
+						$echo+=" (Parameter backupsToKeep=$backupsToKeep)"
+						Write-Host "$echo`n"
+						$summary+="`r`n$echo`r`n"
 
-			# Parameter backupsToKeepPerYear QQQ
-			if(($lastBackupFolders.length -gt 0) -and ($backupsToKeepPerYear -gt 0))
-			{			
-				$lastBackupFolders=@(GetBackupsToKeepPerYear $backupsToKeepPerYear $lastBackupFolders $escaped_backup_source_folder)
-			}
+						WriteLog $summary
+						$emailBody = $emailBody + $summary
 
-			$summary=""
+						$lastBackupsToKeep+=$lastBackupFolders[($backupsToKeep * -1)]
+						$lastBackupFolders = @(ArrayFilter $lastBackupFolders $lastBackupsToKeep)
+					}
+					else
+					{
+						$echo=("Found " + ($totalBackupsToDelete) + " regular backup(s), keeping all (maximum is $backupsToKeep)")
+						$lastBackupsToKeep+=$lastBackupFolders
+						$lastBackupFolders=@()
+					}
+				}
+				#END PARAMETER backupsToKeep
 
-			#INIT PARAMETER backupsToKeep
-			
-			#plus 1 because we just created a new backup but we have checked for old backups before we have
-			#created the new one and want to keep them
-			$totalBackupsToDelete=$lastBackupFolders.length+1
-			$echo="Selected $totalBackupsToDelete old backup(s) to delete."
-			Write-Host "$echo`n"
-			$summary+="`r`n$echo`r`n"
-
-			$echo="Keeping a maximum of $backupsToKeep regular backup(s)."
-			if($LogVerbose) {$echo+=" (Parameter backupsToKeep=$backupsToKeep)"}
-			Write-Host "$echo`n"
-			$summary+="`r`n$echo`r`n"
-
-			WriteLog $summary
-			$emailBody = $emailBody + $summary
-
-			$totalBackupsToDelete=($totalBackupsToDelete - $backupsToKeep)
-			
-			if($totalBackupsToDelete -le 0)
-			{
-				$lastBackupFolders=@()
-			}
-
-			if($lastBackupFolders.length -gt $totalBackupsToDelete)
-			{
-				$lastBackupFolders=$lastBackupFolders[0..($totalBackupsToDelete - 1)]
-			}
-
-			#END PARAMETER backupsToKeep
-
-			#Allways lastBackupFolders items will be deleted!!
-			DeleteBackupFolders $selectedBackupDestination $lastBackupFolders
-	
-				#Delete log files belonging to deleted backup folders
-			if($lastBackupFolders.length -gt 0)
-			{
-				$echo="Deleting log files beloging old backup(s) deleted."
-				Write-Host "$echo"
-				WriteLog "$echo"
-				DeleteLogFiles $logFileDestination @(GetOrphanLogFiles $selectedBackupDestination $lastBackupFolders)
+				#Always lastBackupFolders items will be deleted!!
+				DeleteBackupFolders $selectedBackupDestination $lastBackupFolders
+		
+					#Delete log files belonging to deleted backup folders
+				if($lastBackupFolders.length -gt 0)
+				{
+					$echo="Deleting log files belonging old backup(s) deleted."
+					Write-Host "$echo"
+					WriteLog "$echo"
+					$logFilesToDelete=@(GetOrphanLogFiles $selectedBackupDestination $lastBackupFolders)
+					
+					if($logFilesToDelete.length -gt 0)
+					{
+						DeleteLogFiles $logFileDestination $logFilesToDelete
+					}
+					else
+					{
+						$echo="Log files belonging to old backup(s) not found."
+						Write-Host "$echo"
+						WriteLog "$echo"
+					}					
+				}
 			}
 		} else {
 			# The backup source does not exist - there was no point processing this source.
 			$output = "ERROR: Backup source does not exist - $backup_source - backup NOT done for this source`r`n"
 			$emailBody = "$emailBody`r`n$output`r`n"
 			$error_during_backup = $true
-			echo $output
-			if ($LogFile) {
-				$output | Out-File "$LogFile" -encoding ASCII -append
-			}
+			Write-Host $output
+			WriteLog $output
 		}
+		
+		WaitForKey	#&&&
+		cls #&&&
 	}
 
 	if (($deleteOldLogFiles -eq $True) -and ($logFileDestination)) {
-		if ($StepTiming -eq $True) {
-			$stepTime = get-date -f "yyyy-MM-dd HH-mm-ss"
-		}
-		echo  "$stepCounter. $stepTime Deleting old log files"
-		$stepCounter++
+		StepCounter "Deleting old log files"
 
 		$lastLogFiles = @(GetAllLogsFiles $logFileDestination)
 
@@ -1320,7 +1329,7 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 		$summary+="`r`n$echo`r`n"
 
 		$echo="Keeping a maximum of $logFilesToKeep log files(s)."
-		if($LogVerbose) {$echo+=" (Using Parameter backupsToKeep)"}
+		$echo+=" (Using Parameter backupsToKeep)"
 		Write-Host "$echo`n"
 		$summary+="`r`n$echo`r`n"
 
@@ -1356,11 +1365,7 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 		# Delete the last shadow copy
 		foreach ($shadowCopy in $shadowCopies) {
 		if ($s2.ID -eq $shadowCopy.ID) {
-			if ($StepTiming -eq $True) {
-				$stepTime = get-date -f "yyyy-MM-dd HH-mm-ss"
-			}
-			echo  "$stepCounter. $stepTime Deleting last Shadow Copy"
-			$stepCounter++
+			StepCounter "Deleting last Shadow Copy"
 			try {
 				$shadowCopy.Delete()
 			}
@@ -1368,10 +1373,10 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				$output = "ERROR: Could not delete Shadow Copy. "
 				$emailBody = "$emailBody`r`n$output`r`n$_"
 				$error_during_backup = $true
-				echo $output  $_
+				Write-Host $output  $_
 			}
 			$num_shadow_copies--
-			echo "done`n"
+			Write-Host "done`n"
 			break
 			}
 		}
@@ -1394,22 +1399,20 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 	}
 	$emailBody = "$emailBody`r`n$output`r`n"
 	$error_during_backup = $true
-	echo $output
-	if ($LogFile) {
-		$output | Out-File "$LogFile" -encoding ASCII -append
-	}
+	Write-Host $output
+	WriteLog "$output`r`n"
 }
 
 if ($emailTo -AND $emailFrom -AND $SMTPServer) {
-	echo "============Sending Email============"
-	$stepCounter = 1
-
+	# Restart Stepcounter to 1
+	StepCounter 1
+		
+	$echo="============Sending Email============"
+	Write-Host $echo
+	WriteLog "$echo`n"
+	
 	if ($LogFile) {
-		if ($StepTiming -eq $True) {
-			$stepTime = get-date -f "yyyy-MM-dd HH-mm-ss"
-		}
-		echo  "$stepCounter. $stepTime Zipping log file"
-		$stepCounter++
+		StepCounter "Zipping log file"
 		$zipFilePath = "$LogFile.zip"
 		$fileToZip = get-item $LogFile
 
@@ -1434,8 +1437,8 @@ if ($emailTo -AND $emailFrom -AND $SMTPServer) {
 			$error_during_backup = $True
 			$output = "`r`nERROR: Could not create log ZIP file. Will try to attach the unzipped log file and hope it's not to big.`r`n$_`r`n"
 			$emailBody = "$emailBody`r`n$output`r`n"
-			echo $output
-			$output | Out-File "$LogFile"  -encoding ASCII -append
+			Write-Host $output
+			WriteLog "$output`r`n"
 			$attachment = New-Object System.Net.Mail.Attachment("$LogFile" )
 		}
 	}
@@ -1458,11 +1461,8 @@ if ($emailTo -AND $emailFrom -AND $SMTPServer) {
 	$SMTPClient.Credentials = New-Object System.Net.NetworkCredential($SMTPUser, $SMTPPassword);
 
 	$emailSendSucess = $False
-	if ($StepTiming -eq $True) {
-		$stepTime = get-date -f "yyyy-MM-dd HH-mm-ss"
-	}
-	echo  "$stepCounter. $stepTime Sending email"
-	$stepCounter++
+	StepCounter "Sending email"
+
 	while ($emailSendRetries -gt 0 -AND !$emailSendSucess) {
 		try {
 			$emailSendRetries--
@@ -1473,10 +1473,8 @@ if ($emailTo -AND $emailFrom -AND $SMTPServer) {
 				$stepTime = get-date -f "yyyy-MM-dd HH-mm-ss"
 			}
 			$output = "ERROR: $stepTime Could not send Email.`r`n$_`r`n"
-			echo $output
-			if ($LogFile) {
-				$output | Out-File "$LogFile" -encoding ASCII -append
-			}
+			Write-Host $output
+			WriteLog "$output`r`n"
 		}
 
 		if (!$emailSendSucess) {
@@ -1488,20 +1486,24 @@ if ($emailTo -AND $emailFrom -AND $SMTPServer) {
 		$attachment.Dispose()
 	}
 
-	echo "done"
+	Write-Host "done"
 }
 
 if ($substDone) {
 	# Delete any drive letter substitution done earlier
 	# Note: the subst drive might have contained the log file, so we cannot delete earlier since it is needed to zip and email.
-	echo "`nRemoving subst of $substDrive`n"
+	$echo="`nRemoving subst of $substDrive`n"
+	Write-Host $echo
+	WriteLog "$echo`n"
+	
 	subst "$substDrive" /D
 }
 
 if (-not ([string]::IsNullOrEmpty($postExecutionCommand))) {
-	echo "`nrunning postexecution command ($postExecutionCommand)`n"
+	StepCounter "`nrunning postexecution command ($postExecutionCommand)`n"
 	$output = `cmd /c  `"$postExecutionCommand`"`
 
 	$output += "`n"
-	echo $output
+	Write-Host $output
+	WriteLog "$output`r`n"
 }
