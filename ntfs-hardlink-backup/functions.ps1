@@ -474,21 +474,28 @@ Function GetAllBackupsSourceItems
 
 	.Parameter EscapedBackupSourceFolder
 		$backup_source_folder escaped
+		If not provided, it will take all folders "backup type"
 
 	.Outputs
 		Hashtable oldBackupSourceFolders
 
 	.Example
-		$oldBackupFolders=GetAllBackupsSourceItems $selectedBackupDestination $backup_source_folder_escaped
+		$oldBackupFolders=@(GetAllBackupsSourceItems $selectedBackupDestination $backup_source_folder_escaped)
+		-----------
+		Gets all folders of backups belonging to $backup_source_folder_escaped in $selectedBackupDestination folder
 
+	.Example
+		$oldBackupFolders=@(GetAllBackupsSourceItems $selectedBackupDestination)
+		-----------
+		Gets all folders of 'backups type' in $selectedBackupDestination folder
 	#>
 	[CmdletBinding()]
 	Param(
 		[ValidateNotNullOrEmpty()]
 		[Parameter(Mandatory=$True)]
 		[String]$BackupDestination,
+		[Parameter(Mandatory=$False)]
 		[ValidateNotNullOrEmpty()]
-		[Parameter(Mandatory=$True)]
 		[String]$EscapedBackupSourceFolder
 	)
 
@@ -504,8 +511,19 @@ Function GetAllBackupsSourceItems
 
 		# Contains the list of the backups belonging to source
 		$oldBackupSourceFolders = @()
-		foreach ($item in $oldBackupItems) {
-			if ($item.Name  -match '^'+$EscapedBackupSourceFolder+' - (\d{4})-\d{2}-\d{2} \d{2}-\d{2}-\d{2}$' ) {
+		
+		if(!$EscapedBackupSourceFolder)
+		{
+			$matchString = '\w+'
+		}
+		else
+		{
+			$matchString = $EscapedBackupSourceFolder
+		}			
+		$matchString = '^'+ $matchString + ' - (\d{4})-\d{2}-\d{2} \d{2}-\d{2}-\d{2}$' 
+		foreach ($item in $oldBackupItems) 
+		{
+			if ($item.Name  -match $matchString ) {
 				$oldBackupSourceFolders += $item.name
 			}
 		}
@@ -535,6 +553,9 @@ Function DeleteBackupFolders
 		Date      : 2015/04/10
 		Version   : 1.1
 
+	.Parameter backupDestination
+		Path of backup destination folder
+
 	.Parameter backupsToDelete
 		Specifies the collection with backup folders to delete
 
@@ -546,12 +567,15 @@ Function DeleteBackupFolders
 		Nothing
 
 	.Example
-		DeleteBackupFolders $backupFolders
+		DeleteBackupFolders $selectedBackupDestination $backupFolders
 
 	#>
 	[CmdletBinding()]
 	Param(
 		[ValidateNotNullOrEmpty()]
+		[Parameter(Mandatory=$True)]
+		[String]$backupDestination,
+		[AllowEmptyCollection()]
 		[Parameter(Mandatory=$True)]
 		[Array]$backupsToDelete,
 		[Parameter(Mandatory=$False)]
@@ -576,14 +600,14 @@ Function DeleteBackupFolders
 		
 		if($backupsToDelete.length -gt 0)
 		{
-			$echo=("Deleting " + $backupsToDelete.length + " old backup(s)")
+			$echo=("Deleting " + $backupsToDelete.length + " old backup(s)`n")
 			if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
 			Write-Host $echo
 			$log+="`r`n$echo"
 			
 			foreach($folder in $backupsToDelete)
 			{
-				$folderToDelete =  $selectedBackupDestination +"\"+ $folder
+				$folderToDelete =  $backupDestination +"\"+ $folder
 
 				$echo="Deleting $folderToDelete"
 
@@ -718,7 +742,7 @@ Function DeleteLogFiles
 		[Parameter(Mandatory=$True)]
 		[Array]$folderNames,
 		[Parameter(Mandatory=$False)]
-		[switch]$dryrun=$True
+		[switch]$dryrun=$False
 	)
 
 	Begin
@@ -755,6 +779,7 @@ Function DeleteLogFiles
 				$echo=""
 				If (Test-Path "$logFileToDelete") 
 				{
+					$logFilesDeleted++
 					$echo="Deleting $logFileToDelete"
 					if($dryrun -eq $False)
 					{
@@ -764,6 +789,7 @@ Function DeleteLogFiles
 				
 				If (Test-Path "$logFileToDelete.zip") 
 				{
+					$logFilesDeleted++
 					if($echo)
 					{
 						$echo+=" and (.zip)"
@@ -784,7 +810,6 @@ Function DeleteLogFiles
 					if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
 					$logDeleted+="`r`n$echo"
 					$echoDeleted+="$echo`n"
-					$logFilesDeleted++					
 				}
 			}
 		}
@@ -799,14 +824,14 @@ Function DeleteLogFiles
 			Write-Host "$echo"
 			$log+="`r`n$logDeleted"
 
-			$echo="Deleted " + $logFilesDeleted +" old logfiles(s)"
+			$echo="Deleted " + $logFilesDeleted +" old log files(s)"
 			if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
 			Write-Host "`n$echo"
 			$log+="`r`n$echo"
 		}
 		else
 		{
-			$echo="No old files were deleted"
+			$echo="No old log files were deleted"
 			if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
 			Write-Host "`n$echo"
 			$log+="`r`n$echo"
@@ -871,17 +896,210 @@ Function GetAllLogsFiles
 
 			# get me the old logs if any
 			foreach ($item in $oldLogItems) {
-				if ($item.Name  -match '^\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}.log$' ) {
-					$lastLogFiles += $item
+				if ($item.Name  -match '^(\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}).log(.zip)*$' ) {
+					$lastLogFiles += $matches[1]
 				}
 			}
 		}
 		
-		return $oldBackupSourceFolders
+		return $lastLogFiles
 		
 		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
     }
 
     End
 	{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function ended"}
+}
+
+Function GetOrphanLogFiles
+{
+	<#
+	.Synopsis
+		Gets a collection of log files and check if exist his belonging backup folder
+
+	.Description
+		If we wan't delete log files of existing backup folders, can use
+		this function to filter logFilesToDelete Collection
+
+	.Notes
+		Author    : Juan Antonio Tubio <jatubio@gmail.com>
+		GitHub    : https://github.com/jatubio
+		Date      : 2015/04/11
+		Version   : 1.0
+
+	.Parameter backupDestination
+		Path of backup destination folder
+
+	.Parameter logFilesToDelete
+		Specifies the collection with log files to delete
+		Can be only date and time or include also belonging
+		folder name.
+
+	.Outputs
+		Nothing
+
+	.Example
+		$logFilesToDelete = @(GetOrphanLogFiles $selectedBackupDestination $logFilesToDelete)
+
+	#>
+	[CmdletBinding()]
+	Param(
+		[ValidateNotNullOrEmpty()]
+		[Parameter(Mandatory=$True)]
+		[String]$backupDestination,
+		[AllowEmptyCollection()]
+		[Parameter(Mandatory=$True)]
+		[Array]$logFilesToDelete
+	)
+
+	Begin
+		{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function started"}
+
+	Process
+    {
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
+
+		# Get all of backup folders
+		$backupFolders=@(GetAllBackupsSourceItems $backupDestination)
+		
+		$orphanLogs=@()
+		# Loop logFilesToDelete and find for a belonging backup folder
+		foreach($logFile in $logFilesToDelete)
+		{			
+			$beforeLength=$backupFolders.length
+			if($beforeLength -gt 0)
+			{
+				#if it's a full backup name folder, get only date-time part.
+				$logDateTime=$logFile
+				if($logDateTime.length -gt 19)
+				{
+					$logDateTime=$logDateTime.Substring($logDateTime.length - 19)
+				}				
+					# We catch only the folders that are not matching the logfile date
+				$backupFolders=$backupFolders -notlike "* - $logDateTime"
+				
+					# If not have excluded folders, don't exists backups belonging this logfile
+				if($backupFolders.length -eq $beforeLength)
+				{
+					$orphanLogs+=$logFile
+				}
+			}
+			else
+			{
+				# If no more backups folders, logFile comes directly to orphanLogs
+				$orphanLogs+=$logFile
+			}			
+		}
+		
+		return $orphanLogs
+		
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
+    }
+
+    End
+	{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function ended"}
+}
+
+Function ArrayFilter
+{
+	<#
+	.Synopsis
+		Filter one Array with another array
+
+	.Description
+		Given $sourcearray and $filterarray, returns a new array
+		with $sourcearray elements not found on filterarray.
+		Elements of returned array will be strings
+		
+	.Notes
+		Author    : Juan Antonio Tubio <jatubio@gmail.com>
+		GitHub    : https://github.com/jatubio
+		Date      : 2015/04/11
+		Version   : 1.0
+
+	.Parameter sourcearray
+		Source array to be filtered
+
+	.Parameter filterarray
+		Array with elements to exclude from sourcearray
+
+	.Outputs
+		Array filtered
+
+	.Example
+		foldersToKeep = @(ArrayFilter $foldersFound $foldersToDelete)
+
+	#>
+	[CmdletBinding()]
+	Param(
+		[AllowEmptyCollection()]
+		[Parameter(Mandatory=$True)]
+		[Array]$sourcearray,
+		[AllowEmptyCollection()]
+		[Parameter(Mandatory=$True)]
+		[Array]$filterarray
+	)
+
+	Begin
+		{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function started"}
+
+	Process
+    {
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
+ 
+		$matchinfo = $sourcearray | select-string -pattern $filterarray -simplematch -notmatch
+
+		#Filtering will return Selected.Microsoft.PowerShell.Commands.MatchInfo objects, an we need one array of strings
+		$filteredarray=@()
+		foreach($item in $matchinfo)
+		{		
+			$filteredarray+=$item.ToString()
+		}
+		
+		return $filteredarray
+		
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
+    }
+
+    End
+	{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function ended"}
+}
+
+Function WaitForKey
+{
+	<#
+	.Synopsis
+		Show "Press any key to continue ..." and Wait until a key is pressed
+
+	.Description
+		Can show a text before waiting 
+		
+	.Notes
+		Author    : Juan Antonio Tubio <jatubio@gmail.com>
+		GitHub    : https://github.com/jatubio
+		Date      : 2015/04/11
+		Version   : 1.0
+
+	.Parameter text
+		Text to show
+
+	.Outputs
+		Nothing
+
+	.Example
+		WaitForKey "Debug messages"
+
+	#>
+	[CmdletBinding()]
+	Param(
+		[Parameter(Mandatory=$False)]
+		[String]$text
+	)
+
+	Process
+    {
+		if($text) { Write-Host $text }
+		Write-Host "Press any key to continue ..."	
+		$x = $host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    }
 }

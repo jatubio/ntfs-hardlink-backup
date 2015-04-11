@@ -1241,6 +1241,12 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 			$emailBody = $emailBody + $summary
 
 			$totalBackupsToDelete=($totalBackupsToDelete - $backupsToKeep)
+			
+			if($totalBackupsToDelete -le 0)
+			{
+				$lastBackupFolders=@()
+			}
+
 			if($lastBackupFolders.length -gt $totalBackupsToDelete)
 			{
 				$lastBackupFolders=$lastBackupFolders[0..($totalBackupsToDelete - 1)]
@@ -1257,7 +1263,7 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				$echo="Deleting log files beloging old backup(s) deleted."
 				Write-Host "$echo"
 				WriteLog "$echo"
-				DeleteLogFiles $logFileDestination $lastBackupFolders
+				DeleteLogFiles $logFileDestination @(GetOrphanLogFiles $selectedBackupDestination $lastBackupFolders)
 			}
 		} else {
 			# The backup source does not exist - there was no point processing this source.
@@ -1272,13 +1278,13 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 	}
 
 	if (($deleteOldLogFiles -eq $True) -and ($logFileDestination)) {
-		$lastLogFiles = @(GetAllLogsFiles $logFileDestination)
-
 		if ($StepTiming -eq $True) {
 			$stepTime = get-date -f "yyyy-MM-dd HH-mm-ss"
 		}
 		echo  "$stepCounter. $stepTime Deleting old log files"
 		$stepCounter++
+
+		$lastLogFiles = @(GetAllLogsFiles $logFileDestination)
 
 		#INIT PARAMETER backupsToKeep applied to logFiles
 		
@@ -1286,6 +1292,7 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 			# If $backupsToKeep<=0, keep at least current log file
 		if($logFilesToKeep -le 0) {$logFilesToKeep=1}
 		
+		$summary=""
 		#No need to add 1 here because the new log existed already when we checked for old log files
 		$totalLogFilesToDelete = $lastLogFiles.length
 		$echo="Selected $totalLogFilesToDelete log file(s) to delete."
@@ -1300,7 +1307,19 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 		WriteLog $summary
 		$emailBody = $emailBody + $summary
 
-		$totalLogFilesToDelete=$totalLogFilesToDelete - $logFilesToKeep
+		# Exclude from deletion the current log file
+		$lastLogFiles = @(ArrayFilter $lastLogFiles @($dateTime))
+
+		# Include on deletion only orphan log files
+		$lastLogFiles = @(GetOrphanLogFiles $selectedBackupDestination $lastLogFiles)
+		
+		$totalLogFilesToDelete=$lastLogFiles.length - $logFilesToKeep
+		
+		if($totalLogFilesToDelete -le 0)
+		{
+			$lastLogFiles=@()
+		}
+		
 		if($lastLogFiles.length -gt $totalLogFilesToDelete)
 		{
 			$lastLogFiles=$lastLogFiles[0..($totalLogFilesToDelete - 1)]
