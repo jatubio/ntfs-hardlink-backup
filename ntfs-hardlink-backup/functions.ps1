@@ -1064,7 +1064,7 @@ Function ArrayFilter
 		
 		if($filterarray.length -gt 0)
 		{
-			$matchinfo = $sourcearray | select-string -pattern $filterarray -simplematch -notmatch
+			$matchinfo = @($sourcearray | select-string -pattern $filterarray -simplematch -notmatch)
 
 			if($matchinfo)
 			{
@@ -1270,6 +1270,72 @@ Function Verbose
 			WriteLog "$text"
 		}
 		
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
+    }
+
+    End
+	{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function ended"}
+}
+
+Function CheckLastArrayItems
+{
+	<#
+	.Synopsis
+		Filter sourcearray with filterarray
+		And sort both in ascending order
+
+	.Description
+		Given $sourcearray and $filterarray,
+		Calls to ArrayFilter and after, sort received array
+		
+	.Notes
+		Author    : Juan Antonio Tubio <jatubio@gmail.com>
+		GitHub    : https://github.com/jatubio
+		Date      : 2015/04/12
+		Version   : 1.0
+
+	.Parameter sourcearray (By Reference)
+		Source array to be filtered
+
+	.Parameter filterarray (By Reference)
+		Array with elements to exclude from sourcearray
+
+	.Outputs
+		Nothing
+
+	.Example
+		CheckLastArrayItems ([Ref]$lastBackupFolders) ([Ref]$lastBackupsToKeep)
+
+	#>
+	[CmdletBinding()]
+	Param(
+		[AllowEmptyCollection()]
+		[Parameter(Mandatory=$True)]
+		[Ref]$sourcearray,
+		[AllowEmptyCollection()]
+		[Parameter(Mandatory=$True)]
+		[Ref]$filterarray
+	)
+
+	Begin
+		{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function started"}
+
+	Process
+    {
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
+
+		Write-Host "CheckLastArrayItems`n" #&&&
+		Write-Host $(ShowArray $sourcearray.Value)	#&&&
+		WaitForKey "`n source before $($sourcearray.Value.length)" #&&&
+		Write-Host $(ShowArray $filterarray.Value)	#&&&
+		WaitForKey "`n filter before $($filterarray.Value.length)" #&&&
+		$sourcearray.Value=@(@(ArrayFilter $sourcearray.Value $filterarray.Value) | sort)
+		$filterarray.Value = @($filterarray.Value | sort)
+		Write-Host $(ShowArray $sourcearray.Value)	#&&&
+		WaitForKey "`n source after $($sourcearray.Value.length)" #&&&
+		Write-Host $(ShowArray $filterarray.Value)	#&&&
+		WaitForKey "`n filter after $($filterarray.Value.length)" #&&&
+
 		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
     }
 

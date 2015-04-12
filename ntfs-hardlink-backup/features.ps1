@@ -19,7 +19,7 @@ Function GetBackupsToKeepPerYear
 {
 	<#
 	.Synopsis
-		Get collection of Backups to keep per year.
+		Keeps $backupsToKeepPerYear Backups
 		Based on $backupsToKeepPerYear parameter.
 
 	.Description
@@ -34,24 +34,23 @@ Function GetBackupsToKeepPerYear
 	.Parameter backupsToKeepPerYear
 		Number of Backups to keep per year (From global parameter)
 		
-	.Parameter lastBackupsToKeep
+	.Parameter lastBackupsToKeep (By Reference)
 		A lastBackupsToKeep Collection
 
-	.Parameter lastBackupFolders
+	.Parameter lastBackupFolders (By Reference)
 		Specifies the Array of older backups folders found belonging to source. ($lastBackupFolders)
 		
 	.Parameter EscapedBackupSourceFolder
 		$backup_source_folder escaped
 
 	.Return
-		lastBackupsToKeep
-			Updated with the backups to be kept by this strategy
-			
+		Nothing
+	
 	.Outside Scope Variables
 		$LogVerbose
 	
 	.Example
-		$lastBackupFolders=@(GetBackupsToKeepPerYear $backupsToKeepPerYear $lastBackupsToKeep $lastBackupFolders $backup_source_folder)
+		GetBackupsToKeepPerYear $backupsToKeepPerYear ([Ref]$lastBackupsToKeep) ([Ref]$lastBackupFolders) $backup_source_folder
 
 	#>
 	[CmdletBinding()]
@@ -61,10 +60,10 @@ Function GetBackupsToKeepPerYear
 		[Int32]$backupsToKeepPerYear,
 		[AllowEmptyCollection()]
 		[Parameter(Mandatory=$True)]
-		[Array]$lastBackupsToKeep,
+		[Ref]$lastBackupsToKeep,
 		[AllowEmptyCollection()]
 		[Parameter(Mandatory=$True)]
-		[Array]$lastBackupFolders,
+		[Ref]$lastBackupFolders,
 		[ValidateNotNullOrEmpty()]
 		[Parameter(Mandatory=$True)]
 		[String]$EscapedBackupSourceFolder
@@ -84,10 +83,12 @@ Function GetBackupsToKeepPerYear
 
 		$log=""
 
-		#First, make sure, we have not duplicates between lastBackupFolders and lastBackupsToKeep
-		$lastBackupFolders = @(ArrayFilter $lastBackupFolders $lastBackupsToKeep)
+		#First CheckArrays
+		CheckLastArrayItems ([Ref]([Ref]$lastBackupFolders).Value) ([Ref]([Ref]$lastBackupsToKeep).Value)
 
-		$echo=("Found " + $lastBackupFolders.length + " old backup(s)")
+		$backupsToDelete = $lastBackupFolders.Value #QQQ
+
+		$echo=("Found " + $backupsToDelete.length + " old backup(s)")
 		Write-Host "$echo`n"
 		$log+="`r`n$echo`r`n"
 
@@ -98,7 +99,7 @@ Function GetBackupsToKeepPerYear
 		$log+="`r`n$echo"
 		
 		#find all backups per year
-		foreach ($folder in $lastBackupFolders) {
+		foreach ($folder in $backupsToDelete) {
 			if ($folder  -match '^'+$EscapedBackupSourceFolder+' - (\d{4})-\d{2}-\d{2} \d{2}-\d{2}-\d{2}$' ) {
 				if (!($lastBackupFoldersPerYear.ContainsKey($matches[1]))) {
 					$lastBackupFoldersPerYear[$matches[1]] = @()
@@ -147,8 +148,8 @@ Function GetBackupsToKeepPerYear
 
 		# Get Backups Selected For Keep
 		$backupsToKeep=@()
-		foreach ($year in $($lastBackupFoldersPerYearToKeep.keys | sort)) {
-			$backupsToKeep+=$lastBackupFoldersPerYearToKeep[$year]
+		foreach ($year in $($lastBackupFoldersPerYear.keys | sort)) {
+			$backupsToKeep+=$lastBackupFoldersPerYear[$year]
 		}
 
 		Write-Host "`n$yearBackupsKeptText"
@@ -184,9 +185,10 @@ Function GetBackupsToKeepPerYear
 		
 		WriteLog $log
 		
-		$lastBackupsToKeep+=$backupsToKeep
-		return $lastBackupsToKeep
+		$lastBackupsToKeep.Value+=$backupsToKeep
 		
+		CheckLastArrayItems ([Ref]([Ref]$lastBackupFolders).Value) ([Ref]([Ref]$lastBackupsToKeep).Value)
+
 		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
     }
 
@@ -229,18 +231,19 @@ Function SkipIfNoChanges
 	.Parameter currentBackupFolderName
 		Name of Current Backup Folder ($currentBackupFolderName)
 
-	.Outputs
-		Nothing. See below for scope variables changed
+	.Parameter lastBackupsToKeep (By Reference)
+		A lastBackupsToKeep Collection
+		If no changes, add last Backup to collection and remove current
 
-	.Outside Scope Variables
-		$script:lastBackupsToKeep
-			If no changes, add last Backup to collection and remove current
-		
-		$script:lastBackupFolders
-			If no changes, remove last Backup from collection
+	.Parameter lastBackupFolders (By Reference)
+		Specifies the Array of older backups folders found belonging to source. ($lastBackupFolders)
+		If no changes, remove last Backup from collection
+
+	.Returns
+		Nothing.
 	
 	.Example
-		SkipIfNoChanges $backup_response $actualBackupDestination$backupMappedString $currentBackupFolderName
+		SkipIfNoChanges $backup_response $actualBackupDestination$backupMappedString $currentBackupFolderName ([Ref]$lastBackupsToKeep) ([Ref]$lastBackupFolders)
 
 	#>
 	[CmdletBinding()]
@@ -253,7 +256,13 @@ Function SkipIfNoChanges
 		[String]$currentBackupFolder,
 		[ValidateNotNullOrEmpty()]
 		[Parameter(Mandatory=$True)]
-		[String]$currentBackupFolderName
+		[String]$currentBackupFolderName,
+		[AllowEmptyCollection()]
+		[Parameter(Mandatory=$True)]
+		[Ref]$lastBackupsToKeep,
+		[AllowEmptyCollection()]
+		[Parameter(Mandatory=$True)]
+		[Ref]$lastBackupFolders
 	)
 
 	Begin
@@ -291,25 +300,25 @@ Function SkipIfNoChanges
 
 			DeleteFolder "$currentBackupFolder"
 			
-			#Arrays in PowerShell are fixed-size and we can't remove elements.
-			#Thus, to remove the last entry in the array, you could overwrite the array by a copy that includes every item except the last
+			# First, check both arrays
+			CheckLastArrayItems ([ref]([Ref]$lastBackupFolders).Value) ([ref]([Ref]$lastBackupsToKeep).Value)
 			
 			# Remove current backup from lastBackupsToKeep
-			$script:lastBackupsToKeep = @(ArrayFilter $script:lastBackupsToKeep @($currentBackupFolderName))
+			$lastBackupsToKeep.Value = @(ArrayFilter $lastBackupsToKeep.Value @($currentBackupFolderName))
 			
-			if($script:lastBackupFolders.length	-gt 0)
+			if(($lastBackupFolders.Value).length -gt 0)
 			{
 				# Add last backup to lastBackupsToKeep
-				$script:lastBackupsToKeep += $script:lastBackupFolders[-1]
+				$lastBackupsToKeep.Value += ($lastBackupFolders.Value)[-1]
 				
 				# And remove from lastBackupFolders
-				if($script:lastBackupFolders.length -gt 1)
+				if(($lastBackupFolders.Value).length -gt 1)
 				{
-					$script:lastBackupFolders=$script:lastBackupFolders[0..($script:lastBackupFolders.length-2)]
+					$lastBackupFolders.Value=($lastBackupFolders.Value)[0..(($lastBackupFolders.Value).length-2)]
 				}
 				else
 				{
-					$script:lastBackupFolders=@()
+					$lastBackupFolders.Value=@()
 				}
 			}
 		} else {
@@ -384,10 +393,10 @@ Function ClosestRotation
 		Date      : 2015/04/11
 		Version   : 1.1
 
-	.Parameter lastBackupsToKeep
+	.Parameter lastBackupsToKeep (By Reference)
 		A lastBackupsToKeep Collection
-	.Parameter lastBackupFolders
-		A lastBackupFolders Collection
+	.Parameter lastBackupFolders (By Reference)
+		Specifies the Array of older backups folders found belonging to source. ($lastBackupFolders)
 	.Parameter recent
 		Max number of recent backup(s) to keep
 	.Parameter daily
@@ -413,26 +422,25 @@ Function ClosestRotation
 		of Backup Strategy.
 
 	.Returns
-		lastBackupsToKeep
-			Updated with the backups to be kept by this strategy
-				
+		Nothing
+	
 	You can give 0 for daily,weekly,monthly,annually or maxyears parameter to 
 	not keep that time span.
 		
 	.Example
-		$lastBackupsToKeep=@(ClosestRotation $lastBackupsToKeep $lastBackupFolders -fixedTime -daily 0 -weekly 7,4)
+		ClosestRotation ([Ref]$lastBackupsToKeep) ([Ref]$lastBackupFolders) -fixedTime -daily 0 -weekly 7,4)
 		-----------
 		Keep folders using Most Closest Rotation Scheme with "Fixed Time". Don't keep daily snapshots
 		and for weekly, keep 4 backups each every 7 days.
 
 	.Example
-		$lastBackupsToKeep=@(ClosestRotation $lastBackupsToKeep $lastBackupFolders -maxyears 0 -dryrun)
+		ClosestRotation ([Ref]$lastBackupsToKeep) ([Ref]$lastBackupFolders) -maxyears 0 -dryrun)
 		-----------
 		Keep folders using Most Closest Rotation Scheme with "Best distributed". Don't keep maxyears
 		snapshots. Simulation Mode: Don't remove nothing at all.
 
 	.Example
-		ClosestRotation $lastBackupsToKeep $lastBackupFolders 0 0 0 0 0 -dryrun
+		ClosestRotation ([Ref]$lastBackupsToKeep) ([Ref]$lastBackupFolders) 0 0 0 0 0 -dryrun
 		-----------
 		Display a funny message ;)
 
@@ -445,10 +453,10 @@ Function ClosestRotation
 	Param(
 		[AllowEmptyCollection()]
 		[Parameter(Mandatory=$True)]
-		[Array]$lastBackupsToKeep,
+		[Ref]$lastBackupsToKeep,
 		[AllowEmptyCollection()]
 		[Parameter(Mandatory=$True)]
-		[Array]$lastBackupFolders,
+		[Ref]$lastBackupFolders,
 		[Parameter(Mandatory=$False)]
 		[Int32]$recent=5,
 		[Parameter(Mandatory=$False)]
@@ -536,7 +544,7 @@ Function ClosestRotation
 			
 			WriteLog $log
 
-			return $lastBackupFolders
+			return
 		}
 
 		$echo="Strategy Parameters:`n"
@@ -561,17 +569,17 @@ Function ClosestRotation
 		$backupsToKeep=@()
 
 		#First, make sure, we have not duplicates between lastBackupFolders and lastBackupsToKeep
-		$lastBackupFolders = @(ArrayFilter $lastBackupFolders $lastBackupsToKeep)
+		CheckLastArrayItems ([Ref]([Ref]$lastBackupFolders).Value) ([Ref]([Ref]$lastBackupsToKeep).Value)
 				
 			#We need to change natural order and give in descent order
-		$allBackups+=$lastBackupFolders[$($lastBackupFolders.length - 1)..0]
+		$allBackups+=($lastBackupFolders.Value)[$($($lastBackupFolders.Value).length - 1)..0]
 		
 		$totalBackupsToKeep=$recent+$daily[1]+$weekly[1]+$monthly[1]+$annually[1]+$maxyears
 
 			# +1 because current backup
 		if(($allBackups.length+1) -gt $totalBackupsToKeep-1)
 		{
-			$lastBackupsToKeepBefore=$lastBackupsToKeep.length
+			$lastBackupsToKeepBefore=($lastBackupsToKeep.Value).length
 		
 			$echo=("Found " + ($allBackups.length + 1) + " regular backup(s), keeping a maximum of $totalBackupsToKeep regular backup(s)`n")
 			$log+=$echo
@@ -598,13 +606,13 @@ Function ClosestRotation
 				if($LogVerbose) { $log+="`r`n$echo" }
 							
 					# Will show also most recent/current backup ($lastBackupsToKeep[0])
-				if($LogVerbose) { $log+=$(ShowArray $(@($lastBackupsToKeep[0])+@($backupsToKeep)) -writeHost:$EchoVerbose)}
+				if($LogVerbose) { $log+=$(ShowArray $(@($lastBackupsToKeep.Value[0])+@($backupsToKeep)) -writeHost:$EchoVerbose)}
 
 				$echo=("`nKeeping $recent recent backup(s)`n")
 				Write-Host $echo
 				$log+="$echo"
 
-				$lastBackupsToKeep+=$backupsToKeep
+				$lastBackupsToKeep.Value+=$backupsToKeep
 				$allBackups=@(ArrayFilter $allBackups $backupsToKeep)
 			}
 
@@ -631,7 +639,7 @@ Function ClosestRotation
 				Write-Host $echo
 				$log+="$echo"				
 
-				$lastBackupsToKeep+=$backupsToKeep
+				$lastBackupsToKeep.Value+=$backupsToKeep
 				$allBackups=@(ArrayFilter $allBackups $backupsToKeep)
 			}
 			
@@ -657,7 +665,7 @@ Function ClosestRotation
 				Write-Host $echo
 				$log+="$echo"				
 
-				$lastBackupsToKeep+=$backupsToKeep
+				$lastBackupsToKeep.Value+=$backupsToKeep
 				$allBackups=@(ArrayFilter $allBackups $backupsToKeep)
 			}
 
@@ -683,7 +691,7 @@ Function ClosestRotation
 				Write-Host $echo
 				$log+="$echo"				
 
-				$lastBackupsToKeep+=$backupsToKeep
+				$lastBackupsToKeep.Value+=$backupsToKeep
 				$allBackups=@(ArrayFilter $allBackups $backupsToKeep)
 			}
 
@@ -709,7 +717,7 @@ Function ClosestRotation
 				Write-Host $echo
 				$log+="$echo"				
 
-				$lastBackupsToKeep+=$backupsToKeep
+				$lastBackupsToKeep.Value+=$backupsToKeep
 				$allBackups=@(ArrayFilter $allBackups $backupsToKeep)
 			}
 
@@ -735,17 +743,17 @@ Function ClosestRotation
 				Write-Host $echo
 				$log+="$echo"				
 
-				$lastBackupsToKeep+=$backupsToKeep
+				$lastBackupsToKeep.Value+=$backupsToKeep
 				$allBackups=@(ArrayFilter $allBackups $backupsToKeep)
 			}
 
-			$echo=("`nClosest Rotation Scheme: Keeping a total of $($lastBackupsToKeep.length-$lastBackupsToKeepBefore) older backup(s)`n")
+			$echo=("`nClosest Rotation Scheme: Keeping a total of $($lastBackupsToKeep.Value.length-$lastBackupsToKeepBefore) older backup(s)`n")
 			Write-Host $echo
 			$log+="$echo"
 		}
 		else
 		{
-			$lastBackupsToKeep+=$allBackups
+			$lastBackupsToKeep.Value+=$allBackups
 
 			$echo=("`nFound " + ($allBackups.length + 1) + " regular backup(s), keeping all (maximum is $totalBackupsToKeep)")
 			$log+=$echo
@@ -756,7 +764,8 @@ Function ClosestRotation
 
 		$emailBody = $emailBody + $log
 
-		return $lastBackupsToKeep
+		# Filter $lastBackupFolders with $lastBackupsToKeep
+		CheckLastArrayItems ([Ref]([Ref]$lastBackupFolders).Value) ([Ref]([Ref]$lastBackupsToKeep).Value)
 
 		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
     }

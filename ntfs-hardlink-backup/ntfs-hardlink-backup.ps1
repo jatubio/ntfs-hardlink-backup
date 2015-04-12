@@ -1209,6 +1209,7 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				# If error on ln.exe, check if backup directory have been created
 			if(($ln_error -eq $False) -or (Test-Path -Path "$actualBackupDestination"))
 			{
+				#$VerbosePreference = "continue" #&&&
 				#.PARAMETER SkipIfNoChanges
 				#Parse log file for changes on source and delete backup folder if not changes.
 				#Thus, we get less backup folders and therefore less hard links. Delaying the possibility of reaching the NTFS link limit of 1023.		
@@ -1218,9 +1219,8 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 
 					Write-Host ("Before " + $lastBackupsToKeep[-1] + "," + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&
 
-						# If changes, current scope $lastBackupsToKeep and $lastBackupFolders will be updated
-					SkipIfNoChanges $backup_response $actualBackupDestination$backupMappedString $currentBackupFolderName
-					#Maybe last backup folder have been removed from collection, thus, set again last backup name
+					# If changes, current scope $lastBackupsToKeep and $lastBackupFolders will be updated
+					SkipIfNoChanges $backup_response $actualBackupDestination$backupMappedString $currentBackupFolderName ([Ref]$lastBackupsToKeep) ([Ref]$lastBackupFolders)
 					#$lastBackupFolderName = $lastBackupFolders[-1]		ZZZ	Don't need because it's not used later
 					WaitForKey ("After "+ $lastBackupsToKeep[-1] + ","  + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&QQQ
 				}
@@ -1230,20 +1230,16 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				#.PARAMETER ClosestRotation
 				# Strategy of snapshot rotation keeping the most closest and the first backup in a time period.
 				if ($ClosestRotation -eq $True) {				
-					Write-Host ("Before " + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&
-					$lastBackupsToKeep=@(ClosestRotation $lastBackupsToKeep $lastBackupFolders)
-					# Filter lastBackupFolders with the new lastBackupsToKeep
-					$lastBackupFolders = @(ArrayFilter $lastBackupFolders $lastBackupsToKeep)
-					WaitForKey ("After " + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&QQQ
+					Write-Host ("Before ClosestRotation" + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&
+					ClosestRotation ([Ref]$lastBackupsToKeep) ([Ref]$lastBackupFolders) 
+					WaitForKey ("After ClosestRotation" + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&QQQ
 				}
 
 				# Parameter backupsToKeepPerYear QQQ
 				if(($lastBackupFolders.length -gt 0) -and ($backupsToKeepPerYear -gt 0))
 				{			
 					Write-Host ("Before " + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&
-					$lastBackupsToKeep=@(GetBackupsToKeepPerYear $backupsToKeepPerYear $lastBackupsToKeep $lastBackupFolders $escaped_backup_source_folder)
-					# Filter lastBackupFolders with the new lastBackupsToKeep
-					$lastBackupFolders = @(ArrayFilter $lastBackupFolders $lastBackupsToKeep)
+					GetBackupsToKeepPerYear $backupsToKeepPerYear ([Ref]$lastBackupsToKeep) ([Ref]$lastBackupFolders) $backup_source_folder
 					WaitForKey ("After " + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&QQQ
 				}
 
@@ -1267,8 +1263,12 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 						WriteLog $summary
 						$emailBody = $emailBody + $summary
 
-						$lastBackupsToKeep+=$lastBackupFolders[($backupsToKeep * -1)]
-						$lastBackupFolders = @(ArrayFilter $lastBackupFolders $lastBackupsToKeep)
+						$lastBackupsToKeep#&&&
+						WaitForKey "before"#&&&
+						$lastBackupsToKeep+=$lastBackupFolders[($backupsToKeep * -1)..-1]
+						$lastBackupsToKeep#&&&
+						WaitForKey "afterQQQ"#&&&
+						CheckLastArrayItems ([Ref]$lastBackupFolders) ([Ref]$lastBackupsToKeep)
 					}
 					else
 					{

@@ -91,7 +91,7 @@ Function Get-IniContent
 			}
 			"^(;.*)$" # Comment
 			{
-				if (!($section))
+				if (!(test-path variable:\section))
 				{
 					$section = "No-Section"
 					$ini[$section] = @{}
@@ -103,7 +103,7 @@ Function Get-IniContent
 			}
 			"(.+?)\s*=\s*(.*)" # Key
 			{
-				if (!($section))
+				if (!(test-path variable:\section))
 				{
 					$section = "No-Section"
 					$ini[$section] = @{}
@@ -126,6 +126,9 @@ Function Get-IniParameter
 {
 	# Note: iniFileContent dictionary is not passed in each time.
 	# Just use the global value to reference that.
+	#
+	# jatubio@gmail.com
+	# New parameter: default
 	[CmdletBinding()]
 	Param(
 		[ValidateNotNullOrEmpty()]
@@ -134,6 +137,9 @@ Function Get-IniParameter
 		[ValidateNotNullOrEmpty()]
 		[Parameter(Mandatory=$True)]
 		[string]$FQDN,
+		[ValidateNotNullOrEmpty()]
+		[Parameter(Mandatory=$False)]
+		[String]$default,
 		[ValidateNotNullOrEmpty()]
 		[Parameter(Mandatory=$False)]
 		[switch]$doNotSubstitute=$False
@@ -200,8 +206,9 @@ Function Get-IniParameter
 			}
 		}
 		
-		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing for IniSection: $FQDN and ParameterName: $ParameterName ParameterValue: $ParameterValue"
+		if(!$ParameterValue -and $default) {$ParameterValue=$default}
 		Return $ParameterValue
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing for IniSection: $FQDN and ParameterName: $ParameterName ParameterValue: $ParameterValue"
     }
 
     End
