@@ -216,9 +216,14 @@ Param(
 	[Parameter(Mandatory=$False)]
 	[switch]$version=$False
 )
-Set-StrictMode -version 2	# For debugging &&&
+Set-StrictMode -version Latest
 #The path and filename of the script it self
 $script_path = Split-Path -parent $MyInvocation.MyCommand.Definition
+
+#Initialize variables
+if (!(test-path variable:\included_inf_functions)) {$included_inf_functions = $False} # test for EXISTENCE & create
+if (!(test-path variable:\included_functions)) {$included_functions = $False} # test for EXISTENCE & create
+if (!(test-path variable:\included_features)) {$included_features = $False} # test for EXISTENCE & create
 
 #----- Include Files -----#
 if(!$included_inf_functions)
@@ -1035,7 +1040,6 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 			# Name of current backup folder.
 			# You can use to filter current backup from collections like $lastBackupsToKeep and $lastBackupFolders
 			$currentBackupFolderName="$backup_source_folder - $dateTime"
-			WaitForKey "$currentBackupFolderName"	# &&&
 				
 			If (Test-Path $selectedBackupDestination -pathType container) {
 
@@ -1122,7 +1126,7 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 
 			$unrollLogMessage="Using Unroll mode:`r`n`tAll Outer Junctions/Symlink Directories will be rebuild inside the hierarchy at the destination location.`r`n`tOuter Symlink Files will be copied to the destination location.`r`n`tsee http://schinagl.priv.at/nt/ln/ln.html#unroll for more information.`r`n"
 			if ($lastBackupFolderName -eq "" ) {
-				WaitForKey "Vacío"	# &&&
+				WaitForKey "lastBackupFolderName Vacío"	#&&&
 			
 				#echo "$lnPath $commonArgumentString --copy `"$backup_source_path`" `"$actualBackupDestination`"    $logFileCommandAppend"
 				$cmdString="`"$lnPath`" $commonArgumentString --copy `"$backup_source_path`" `"$actualBackupDestination`""
@@ -1137,9 +1141,9 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				
 				`cmd /c  "`"$cmdString $logFileCommandAppend 2`>`&1 `""`
 			} else {
-				($lastBackupFolders)	# &&&
-				("A $lastBackupFolderName A")	# &&&
-				WaitForKey "Lleno"	# &&&
+				#("A lastBackupFolderName=$lastBackupFolderName A")	#&&&
+				#($lastBackupFolders)	#&&&
+				#WaitForKey "lastBackupFolders, lastBackupFolderName Lleno"	#&&&
 
 				#echo "$lnPath $commonArgumentString --delorean `"$backup_source_path`" `"$selectedBackupDestination\$lastBackupFolderName`" `"$actualBackupDestination`" $logFileCommandAppend"
 				$cmdString="`"$lnPath`" $commonArgumentString --delorean `"$backup_source_path`" `"$selectedBackupDestination\$lastBackupFolderName`" `"$actualBackupDestination`""
@@ -1202,8 +1206,8 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				$lastBackupsToKeep+=$currentBackupFolderName
 			}
 
-				# If error on ln.exe, we will do nothing
-			if($ln_error -eq $False)
+				# If error on ln.exe, check if backup directory have been created
+			if(($ln_error -eq $False) -or (Test-Path -Path "$actualBackupDestination"))
 			{
 				#.PARAMETER SkipIfNoChanges
 				#Parse log file for changes on source and delete backup folder if not changes.
@@ -1212,13 +1216,13 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 
 					StepCounter "Checking for changes (Parameter SkipIfNoChanges On)"
 
-					Write-Host ("Before " + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&
+					Write-Host ("Before " + $lastBackupsToKeep[-1] + "," + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&
 
 						# If changes, current scope $lastBackupsToKeep and $lastBackupFolders will be updated
 					SkipIfNoChanges $backup_response $actualBackupDestination$backupMappedString $currentBackupFolderName
 					#Maybe last backup folder have been removed from collection, thus, set again last backup name
 					#$lastBackupFolderName = $lastBackupFolders[-1]		ZZZ	Don't need because it's not used later
-					WaitForKey ("After " + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&QQQ
+					WaitForKey ("After "+ $lastBackupsToKeep[-1] + ","  + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&QQQ
 				}
 				
 				StepCounter "Deleting old backups"
@@ -1308,11 +1312,10 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 		}
 		
 		WaitForKey	#&&&
-		cls #&&&
 	}
 
 	if (($deleteOldLogFiles -eq $True) -and ($logFileDestination)) {
-		StepCounter "Deleting old log files"
+		StepCounter "Deleting old log files" -counter 1
 
 		$lastLogFiles = @(GetAllLogsFiles $logFileDestination)
 

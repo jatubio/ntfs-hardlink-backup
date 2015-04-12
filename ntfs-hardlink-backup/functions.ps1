@@ -87,10 +87,10 @@ Function ShowArray
 			if($showName -eq $True) {
 				$echo=$item.Name
 			} else {
-				$echo=$item
+				$echo=$item.ToString()
 			}
 			if($writeHost -eq $True) {Write-Host $echo}
-			$summary+=$echo+"`n"
+			$summary+="$echo`n"
 		}
 		
 		if($showLength -eq $True)
@@ -273,18 +273,22 @@ Function GetTimeSpanFolders
 			$format="minutes"
 		}
 
-		#Write-Host("`nKeeping $maxItems backups, each every $every ($format)")
+		#Write-Host("`nKeeping $maxItems backups, each every $every ($format)")	# &&&
 
 		# Let's calculate dates back
 		$every=$every * -1
 
-		$spanDateTime=AddDateTime (Get-Date) $every $format
-		#Write-Host("Start datetime: " + ($spanDateTime))
+		$spanDateTime=AddDateTime $(Get-Date -f "yyyy-MM-dd HH:mm:ss") $every $format
+		#Write-Host "Start datetime: $($spanDateTime)" # &&&
 
 			#Loop through each item checking if it's inside of span time
 			#From newest to farthest
 		foreach($folderName in $folders) 
 		{
+			#Initialize variables
+			if (!(test-path variable:\lastDate)) {$lastDate = ""} # test for EXISTENCE & create
+			if (!(test-path variable:\lastFolder)) {$lastFolder = ""} # test for EXISTENCE & create
+			
 			$folderDate=GetFolderDate $folderName
 
 			if($lastBackupsToKeep.length -lt $maxItems)
@@ -294,8 +298,8 @@ Function GetTimeSpanFolders
 					# When we get the first item out of range, we get the closest found between the last and current.
 					if($lastFolder)
 					{
-						#Write-Host("Difference between the last ($lastDate) it's " + ($lastDate - $spanDateTime))
-						#Write-Host("Difference between the current ($folderDate) it's " + ($spanDateTime - $folderDate))
+						#Write-Host("Difference between the last ($lastDate) it's " + ($lastDate - $spanDateTime))		# &&&
+						#Write-Host("Difference between the current ($folderDate) it's " + ($spanDateTime - $folderDate))	# &&&
 
 							# If the current is closer, we get them
 						if(($lastDate - $spanDateTime) -gt ($spanDateTime - $folderDate))
@@ -315,7 +319,7 @@ Function GetTimeSpanFolders
 						$lastDate=$folderDate
 					}
 					
-					#Write-Host("Taken " + $lastBackupsToKeep[-1])
+					#Write-Host("Taken " + $lastBackupsToKeep[-1])	# &&&
 					
 					#If fixed time, we add 'every' time span to last time span date
 					if($fixedTime -eq $True)
@@ -327,7 +331,7 @@ Function GetTimeSpanFolders
 						$spanDateTime=AddDateTime (Get-Date $lastDate) $every $format
 					}
 						
-					#Write-Host("*(" + $lastBackupsToKeep.length +")* new datetime: " + ($spanDateTime) + "`n")
+					#Write-Host("*(" + $lastBackupsToKeep.length +")* new datetime: " + ($spanDateTime) + "`n")	# &&&
 				}
 
 					#If we have taken current, reset last to don't take them again
@@ -349,6 +353,7 @@ Function GetTimeSpanFolders
 		}
 		
 		#Write-Host "`n"
+		#WaitForKey "Returns $($lastBackupsToKeep.length)" #&&&
 		return $lastBackupsToKeep
 		
 		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
@@ -504,7 +509,7 @@ Function GetAllBackupsSourceItems
 
 	Process
     {
-		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing (BackupDestination=$BackupDestination)"
 
 		# Contains the list of folders inside backup destination folder
 		$oldBackupItems = Get-ChildItem -Force -Path $BackupDestination | Where-Object {$_ -is [IO.DirectoryInfo]} | Sort-Object -Property Name
@@ -514,13 +519,13 @@ Function GetAllBackupsSourceItems
 		
 		if(!$EscapedBackupSourceFolder)
 		{
-			$matchString = '\w+'
+			$matchString = ''
 		}
 		else
 		{
-			$matchString = $EscapedBackupSourceFolder
+			$matchString = '^'+ $EscapedBackupSourceFolder
 		}			
-		$matchString = '^'+ $matchString + ' - (\d{4})-\d{2}-\d{2} \d{2}-\d{2}-\d{2}$' 
+		$matchString = $matchString + ' - (\d{4})-\d{2}-\d{2} \d{2}-\d{2}-\d{2}$' 
 		foreach ($item in $oldBackupItems) 
 		{
 			if ($item.Name  -match $matchString ) {
@@ -594,15 +599,15 @@ Function DeleteBackupFolders
 
 		$log=""
 		
-		if($dryrun -eq $True)
-		{
-			$echo="Simulation Mode: No backup folder(s) will be damaged :)"
-			$log+="`r`n$echo`r`n`r`n"
-			Write-Host "`n$echo`n"
-		}
-		
 		if($backupsToDelete.length -gt 0)
 		{
+			if($dryrun -eq $True)
+			{
+				$echo="Simulation Mode: No backup folder(s) will be damaged :)"
+				$log+="`r`n$echo`r`n`r`n"
+				Write-Host "`n$echo`n"
+			}
+			
 			$echo=("Deleting " + $backupsToDelete.length + " old backup(s)`n")
 			if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
 			if($EchoVerbose) { Write-Host $echo }
@@ -631,7 +636,7 @@ Function DeleteBackupFolders
 		else
 		{
 			$echo="No old backups were deleted"
-			if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
+			#if($dryrun -eq $True) {$echo="**Simulated** "+$echo} ZZZ
 			Write-Host "`n$echo"
 			$log+="`r`n$echo"
 		}
@@ -744,7 +749,7 @@ Function DeleteLogFiles
 		[Parameter(Mandatory=$True)]
 		[Array]$folderNames,
 		[Parameter(Mandatory=$False)]
-		[switch]$dryrun=$False
+		[switch]$dryrun=$True
 	)
 
 	Begin
@@ -977,13 +982,13 @@ Function GetOrphanLogFiles
 			$beforeLength=$backupFolders.length
 			if($beforeLength -gt 0)
 			{
-				#if it's a full backup name folder, get only date-time part.
+					#if it's a full backup name folder, get only date-time part.
 				$logDateTime=$logFile
 				if($logDateTime.length -gt 19)
 				{
 					$logDateTime=$logDateTime.Substring($logDateTime.length - 19)
 				}				
-					# We catch only the folders that are not matching the logfile date
+				# We catch only the folders that are not matching the logfile date
 				$backupFolders=$backupFolders -notlike "* - $logDateTime"
 				
 					# If not have excluded folders, don't exists backups belonging this logfile
@@ -1054,14 +1059,28 @@ Function ArrayFilter
 	Process
     {
 		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
- 
-		$matchinfo = $sourcearray | select-string -pattern $filterarray -simplematch -notmatch
 
-		#Filtering will return Selected.Microsoft.PowerShell.Commands.MatchInfo objects, an we need one array of strings
 		$filteredarray=@()
-		foreach($item in $matchinfo)
-		{		
-			$filteredarray+=$item.ToString()
+		
+		if($filterarray.length -gt 0)
+		{
+			$matchinfo = $sourcearray | select-string -pattern $filterarray -simplematch -notmatch
+
+			if($matchinfo)
+			{
+	#			Write-Host ("matchinfo= " + $matchinfo.getType().FullName)	# &&&
+	#			Write-Host $matchinfo # &&&
+	#			Write-Host ("matchinfo.length= " + $matchinfo.count)	# &&&
+				#Filtering will return Selected.Microsoft.PowerShell.Commands.MatchInfo objects, an we need one array of strings
+				foreach($item in $matchinfo)
+				{	
+					$filteredarray+=$item.ToString()
+				}
+			}
+		}
+		else
+		{
+			$filteredarray=$sourcearray
 		}
 		
 		return $filteredarray

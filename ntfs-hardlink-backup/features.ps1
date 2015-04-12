@@ -51,7 +51,7 @@ Function GetBackupsToKeepPerYear
 		$LogVerbose
 	
 	.Example
-		$lastBackupFolders=GetBackupsToKeepPerYear $backupsToKeepPerYear $lastBackupsToKeep $lastBackupFolders $backup_source_folder
+		$lastBackupFolders=@(GetBackupsToKeepPerYear $backupsToKeepPerYear $lastBackupsToKeep $lastBackupFolders $backup_source_folder)
 
 	#>
 	[CmdletBinding()]
@@ -146,8 +146,9 @@ Function GetBackupsToKeepPerYear
 		}
 
 		# Get Backups Selected For Keep
-		foreach ($year in $($lastBackupFoldersPerYear.keys | sort)) {
-			$lastBackupsToKeep+=$lastBackupFoldersPerYear[$year]
+		$backupsToKeep=@()
+		foreach ($year in $($lastBackupFoldersPerYearToKeep.keys | sort)) {
+			$backupsToKeep+=$lastBackupFoldersPerYearToKeep[$year]
 		}
 
 		Write-Host "`n$yearBackupsKeptText"
@@ -177,12 +178,13 @@ Function GetBackupsToKeepPerYear
 		
 		if($EchoVerbose) { Write-Host "$yearBackupsKeptTextVerbose" }
 
-		$echo=("Total kept: " + ($lastBackupsToKeep.length) + " 'per years' backup(s)")
+		$echo=("Total kept: " + ($backupsToKeep.length) + " 'per years' backup(s)")
 		Write-Host "$echo`n"
 		$log+="`r`n$echo`r`n"
 		
 		WriteLog $log
 		
+		$lastBackupsToKeep+=$backupsToKeep
 		return $lastBackupsToKeep
 		
 		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
@@ -386,7 +388,7 @@ Function ClosestRotation
 		A lastBackupsToKeep Collection
 	.Parameter lastBackupFolders
 		A lastBackupFolders Collection
-	.Parameter recents
+	.Parameter recent
 		Max number of recent backup(s) to keep
 	.Parameter daily
 		Three comma separated values: Every,Max,Format
@@ -448,7 +450,7 @@ Function ClosestRotation
 		[Parameter(Mandatory=$True)]
 		[Array]$lastBackupFolders,
 		[Parameter(Mandatory=$False)]
-		[Int32]$recents=5,
+		[Int32]$recent=5,
 		[Parameter(Mandatory=$False)]
 		[Array]$daily=@(),
 		[Parameter(Mandatory=$False)]
@@ -474,7 +476,7 @@ Function ClosestRotation
 		
 			#Default values
 			#Always will keep at least most recent backup, because it's not in $lastBackupFolders collection and can't reach them
-		if($recents -le 0)	{$recents=1}			
+		if($recent -le 0)	{$recent=1}			
 		if($daily[0] -ne 0)
 		{
 			if(!$daily[0]) {$daily+=12}
@@ -538,7 +540,7 @@ Function ClosestRotation
 		}
 
 		$echo="Strategy Parameters:`n"
-		if($recents -ne 0){$echo+=("`tKeep $recents most recent(s) backup(s)`n")}
+		if($recent -ne 0){$echo+=("`tKeep $recent most recent backup(s)`n")}
 		if($daily[0] -ne 0){$echo+=("`tDaily: Keep "+$daily[1]+" backup(s), one every "+$daily[0]+" "+$daily[2]+"`n")}
 		if($weekly[0] -ne 0){$echo+=("`tWeekly: Keep "+$weekly[1]+" backup(s), one every "+$weekly[0]+" "+$weekly[2]+"`n")}
 		if($monthly[0] -ne 0){$echo+=("`tMonthly: Keep "+$monthly[1]+" backup(s), one every "+$monthly[0]+" "+$monthly[2]+"`n")}
@@ -561,133 +563,191 @@ Function ClosestRotation
 		#First, make sure, we have not duplicates between lastBackupFolders and lastBackupsToKeep
 		$lastBackupFolders = @(ArrayFilter $lastBackupFolders $lastBackupsToKeep)
 				
-			#Loop through each item from newest to farthest
 			#We need to change natural order and give in descent order
-		for ($i=$lastBackupFolders.length - 1; $i -ge 0; $i-- ) {
-			$allBackups+=$lastBackupFolders[$i]
-		}
+		$allBackups+=$lastBackupFolders[$($lastBackupFolders.length - 1)..0]
 		
-		$totalBackupsToKeep=$recents+$daily[1]+$weekly[1]+$monthly[1]+$annually[1]+$maxyears
+		$totalBackupsToKeep=$recent+$daily[1]+$weekly[1]+$monthly[1]+$annually[1]+$maxyears
 
 			# +1 because current backup
 		if(($allBackups.length+1) -gt $totalBackupsToKeep-1)
 		{
+			$lastBackupsToKeepBefore=$lastBackupsToKeep.length
+		
 			$echo=("Found " + ($allBackups.length + 1) + " regular backup(s), keeping a maximum of $totalBackupsToKeep regular backup(s)`n")
 			$log+=$echo
 			Write-Host $echo
 
-			# Remove most recents backups
-			# The current/most recent backup isn't in the array
-			if($recents -gt 0)
+			# Remove most recent backups
+			# The current/most recent backup isn't in the array	QQQ
+			if($recent -gt 0)
 			{
-				if($recents -gt 1)
+				$echo=("Choosing Recent backup(s) to keep: max $recent")
+				if($recent -gt 1)
 				{
-					$allBackups = $allBackups[($recents-1)..($allBackups.length - 1)]
+					if($allBackups.length -gt $recent)
+					{
+						$backupsToKeep=$allBackups[0..($recent-2)]
+					}
+					else
+					{
+						$backupsToKeep=$allBackups
+					}
 				}
-				$echo=("`nKeeping " + $recents + " recents backup(s)`n")
-			}
-
-				# Daily snapshots
-			if(($daily[0] -gt 0) -and ($allBackups.length -gt $daily[1]))
-			{
-				$echo=("Choosing keep Daily backup(s): max "+$daily[1]+" backup(s), one every "+$daily[0]+" "+$daily[2])
-				# If Array have only 1 element it's returned as string. Thus, i will force cast to array wrapping the function between @()
-				$backupsToKeep=@(GetTimeSpanFolders $allBackups $daily[0] $daily[1] -format $daily[2])
 
 				if($EchoVerbose) { Write-Host $echo }
 				if($LogVerbose) { $log+="`r`n$echo" }
 							
-				if($LogVerbose) { $log+=ShowArray $backupsToKeep -writeHost:$EchoVerbose}
+					# Will show also most recent/current backup ($lastBackupsToKeep[0])
+				if($LogVerbose) { $log+=$(ShowArray $(@($lastBackupsToKeep[0])+@($backupsToKeep)) -writeHost:$EchoVerbose)}
+
+				$echo=("`nKeeping $recent recent backup(s)`n")
+				Write-Host $echo
+				$log+="$echo"
+
+				$lastBackupsToKeep+=$backupsToKeep
+				$allBackups=@(ArrayFilter $allBackups $backupsToKeep)
+			}
+
+				# Daily snapshots
+			if($daily[0] -gt 0)
+			{
+				$echo=("Choosing keep Daily backup(s): max "+$daily[1]+" backup(s), one every "+$daily[0]+" "+$daily[2])
+				if($allBackups.length -gt $daily[1])
+				{
+					# If Array have only 1 element it's returned as string. Thus, i will force cast to array wrapping the function between @()
+					$backupsToKeep=@(GetTimeSpanFolders $allBackups $daily[0] $daily[1] -format $daily[2])
+				}
+				else
+				{
+					$backupsToKeep=$allBackups
+				}
+
+				if($EchoVerbose) { Write-Host $echo }
+				if($LogVerbose) { $log+="`r`n$echo" }
+							
+				if($LogVerbose) { $log+=$(ShowArray $backupsToKeep -writeHost:$EchoVerbose)}
 
 				$echo=("`nKeeping " + $backupsToKeep.length + " Daily backup(s)`n")
 				Write-Host $echo
-				$log+=$echo+"`n"
-				
+				$log+="$echo"				
+
 				$lastBackupsToKeep+=$backupsToKeep
 				$allBackups=@(ArrayFilter $allBackups $backupsToKeep)
 			}
 			
 				# Weekly snapshots
-			if(($weekly[0] -gt 0) -and ($allBackups.length -gt $weekly[1]))
+			if($weekly[0] -gt 0)
 			{
 				$echo=("Choosing keep Weekly backup(s): max "+$weekly[1]+" backup(s), one every "+$weekly[0]+" "+$weekly[2])
-				$backupsToKeep=@(GetTimeSpanFolders $allBackups $weekly[0] $weekly[1] -format $weekly[2])
+				if($allBackups.length -gt $weekly[1])
+				{
+					$backupsToKeep=@(GetTimeSpanFolders $allBackups $weekly[0] $weekly[1] -format $weekly[2])
+				}
+				else
+				{
+					$backupsToKeep=$allBackups
+				}
 				
 				if($EchoVerbose) { Write-Host $echo }
 				if($LogVerbose) { $log+="`r`n$echo" }
 							
-				if($LogVerbose) { $log+=ShowArray $backupsToKeep -writeHost:$EchoVerbose}
+				if($LogVerbose) { $log+=$(ShowArray $backupsToKeep -writeHost:$EchoVerbose)}
 
 				$echo=("`nKeeping " + $backupsToKeep.length + " Weekly backup(s)`n")
 				Write-Host $echo
-				$log+=$echo+"`n"
-				
+				$log+="$echo"				
+
 				$lastBackupsToKeep+=$backupsToKeep
 				$allBackups=@(ArrayFilter $allBackups $backupsToKeep)
 			}
 
 				# Monthly snapshots
-			if(($monthly[0] -gt 0) -and ($allBackups.length -gt $monthly[1]))
+			if($monthly[0] -gt 0)
 			{
 				$echo=("Choosing keep Monthly backup(s): max "+$monthly[1]+" backup(s), one every "+$monthly[0]+" "+$monthly[2])
-				$backupsToKeep=@(GetTimeSpanFolders $allBackups $monthly[0] $monthly[1] -format $monthly[2])
+				if($allBackups.length -gt $monthly[1])
+				{
+					$backupsToKeep=@(GetTimeSpanFolders $allBackups $monthly[0] $monthly[1] -format $monthly[2])
+				}
+				else
+				{
+					$backupsToKeep=$allBackups
+				}
 
 				if($EchoVerbose) { Write-Host $echo }
 				if($LogVerbose) { $log+="`r`n$echo" }
 							
-				if($LogVerbose) { $log+=ShowArray $backupsToKeep -writeHost:$EchoVerbose}
+				if($LogVerbose) { $log+=$(ShowArray $backupsToKeep -writeHost:$EchoVerbose)}
 
 				$echo=("`nKeeping " + $backupsToKeep.length + " Monthly backup(s)`n")
 				Write-Host $echo
-				$log+=$echo+"`n"
-				
+				$log+="$echo"				
+
 				$lastBackupsToKeep+=$backupsToKeep
 				$allBackups=@(ArrayFilter $allBackups $backupsToKeep)
 			}
 
 				# Annually snapshots
-			if(($annually[0] -gt 0) -and ($allBackups.length -gt $annually[1]))
+			if($annually[0] -gt 0)
 			{
 				$echo=("Choosing keep Annual backup(s): max "+$annually[1]+" backup(s), one every "+$annually[0]+" "+$annually[2])
-				$backupsToKeep=@(GetTimeSpanFolders $allBackups $annually[0] $annually[1] -format $annually[2])
+				if($allBackups.length -gt $annually[1])
+				{
+					$backupsToKeep=@(GetTimeSpanFolders $allBackups $annually[0] $annually[1] -format $annually[2])
+				}
+				else
+				{
+					$backupsToKeep=$allBackups
+				}					
 
 				if($EchoVerbose) { Write-Host $echo }
 				if($LogVerbose) { $log+="`r`n$echo" }
 							
-				if($LogVerbose) { $log+=ShowArray $backupsToKeep -writeHost:$EchoVerbose}
+				if($LogVerbose) { $log+=$(ShowArray $backupsToKeep -writeHost:$EchoVerbose)}
 
 				$echo=("`nKeeping " + $backupsToKeep.length + " Annually backup(s)`n")
 				Write-Host $echo
-				$log+=$echo+"`n"
-				
+				$log+="$echo"				
+
 				$lastBackupsToKeep+=$backupsToKeep
 				$allBackups=@(ArrayFilter $allBackups $backupsToKeep)
 			}
 
 				# Max Years
-			if(($maxyears -ne 0) -and ($allBackups.length -gt $maxyears))
+			if($maxyears -ne 0)
 			{
 				$echo=("Choosing the Max years backup(s) to keep: max "+$maxyears+" backup(s), each every 1 years")
-				$backupsToKeep=@(GetTimeSpanFolders $allBackups $maxyears 1 -format "years")
+				if($allBackups.length -gt $maxyears)
+				{
+					$backupsToKeep=@(GetTimeSpanFolders $allBackups $maxyears 1 -format "years")
+				}
+				else
+				{
+					$backupsToKeep=$allBackups
+				}
 
 				if($EchoVerbose) { Write-Host $echo }
 				if($LogVerbose) { $log+="`r`n$echo" }
 							
-				if($LogVerbose) { $log+=ShowArray $backupsToKeep -writeHost:$EchoVerbose}
+				if($LogVerbose) { $log+=$(ShowArray $backupsToKeep -writeHost:$EchoVerbose)}
 
 				$echo=("`nKeeping " + $backupsToKeep.length + " Max years backup(s)`n")
 				Write-Host $echo
-				$log+=$echo+"`n"
-				
+				$log+="$echo"				
+
 				$lastBackupsToKeep+=$backupsToKeep
 				$allBackups=@(ArrayFilter $allBackups $backupsToKeep)
 			}
+
+			$echo=("`nClosest Rotation Scheme: Keeping a total of $($lastBackupsToKeep.length-$lastBackupsToKeepBefore) older backup(s)`n")
+			Write-Host $echo
+			$log+="$echo"
 		}
 		else
 		{
 			$lastBackupsToKeep+=$allBackups
 
-			$echo=("Found " + ($allBackups.length + 1) + " regular backup(s), keeping all (maximum is $totalBackupsToKeep)")
+			$echo=("`nFound " + ($allBackups.length + 1) + " regular backup(s), keeping all (maximum is $totalBackupsToKeep)")
 			$log+=$echo
 			Write-Host $echo
 		}
