@@ -632,7 +632,8 @@ if (-not $SkipIfNoChanges.IsPresent) {
 
 #ClosestRotation parameter
 if (-not $ClosestRotation.IsPresent) {
-	$IniFileString = Get-IniParameter "ClosestRotation" "${FQDN}"
+	$IniFileString = Get-IniParameter "ClosestRotation" "ClosestRotation"
+	if(!$IniFileString){ $IniFileString = Get-IniParameter "ClosestRotation" "${FQDN}" }
 	$ClosestRotation = Is-TrueString "${IniFileString}"
 }
 
@@ -657,7 +658,7 @@ if ([string]::IsNullOrEmpty($lnPath) -or !(Test-Path -Path $lnPath -PathType lea
 	}
 }
 
-#Verbosing. Showing ln.exe path 
+#Verbose. Showing ln.exe path 
 $echo="Using ln.exe from: $lnPath`n"
 if($LogVerbose) {$tempLogContent += "$echo"}
 if($EchoVerbose) {Write-Host "$echo"}
@@ -1126,33 +1127,25 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 
 			$unrollLogMessage="Using Unroll mode:`r`n`tAll Outer Junctions/Symlink Directories will be rebuild inside the hierarchy at the destination location.`r`n`tOuter Symlink Files will be copied to the destination location.`r`n`tsee http://schinagl.priv.at/nt/ln/ln.html#unroll for more information.`r`n"
 			if ($lastBackupFolderName -eq "" ) {
-				WaitForKey "lastBackupFolderName Vacío"	#&&&
-			
-				#echo "$lnPath $commonArgumentString --copy `"$backup_source_path`" `"$actualBackupDestination`"    $logFileCommandAppend"
 				$cmdString="`"$lnPath`" $commonArgumentString --copy `"$backup_source_path`" `"$actualBackupDestination`""
 
 				$echo="Full copy from $backup_source_path to $actualBackupDestination$backupMappedString`n"
 				Write-Host $echo
 				WriteLog "$echo"
 				
-				#Verbosing. Showing ln.exe command line
+				#Verbose. Showing ln.exe command line
 				if($unroll -eq $True) {Verbose $unrollLogMessage}
 				Verbose $cmdString
 				
 				`cmd /c  "`"$cmdString $logFileCommandAppend 2`>`&1 `""`
 			} else {
-				#("A lastBackupFolderName=$lastBackupFolderName A")	#&&&
-				#($lastBackupFolders)	#&&&
-				#WaitForKey "lastBackupFolders, lastBackupFolderName Lleno"	#&&&
-
-				#echo "$lnPath $commonArgumentString --delorean `"$backup_source_path`" `"$selectedBackupDestination\$lastBackupFolderName`" `"$actualBackupDestination`" $logFileCommandAppend"
 				$cmdString="`"$lnPath`" $commonArgumentString --delorean `"$backup_source_path`" `"$selectedBackupDestination\$lastBackupFolderName`" `"$actualBackupDestination`""
 
 				$echo="Delorean copy from $backup_source_path to $actualBackupDestination$backupMappedString against $selectedBackupDestination\$lastBackupFolderName`n"
 				Write-Host $echo
 				WriteLog "$echo"
 				
-				#Verbosing. Showing ln.exe command line
+				#Verbose. Showing ln.exe command line
 				if($unroll -eq $True) {Verbose $unrollLogMessage}
 				Verbose $cmdString
 
@@ -1209,7 +1202,6 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				# If error on ln.exe, check if backup directory have been created
 			if(($ln_error -eq $False) -or (Test-Path -Path "$actualBackupDestination"))
 			{
-				#$VerbosePreference = "continue" #&&&
 				#.PARAMETER SkipIfNoChanges
 				#Parse log file for changes on source and delete backup folder if not changes.
 				#Thus, we get less backup folders and therefore less hard links. Delaying the possibility of reaching the NTFS link limit of 1023.		
@@ -1217,12 +1209,9 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 
 					StepCounter "Checking for changes (Parameter SkipIfNoChanges On)"
 
-					Write-Host ("Before " + $lastBackupsToKeep[-1] + "," + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&
-
 					# If changes, current scope $lastBackupsToKeep and $lastBackupFolders will be updated
 					SkipIfNoChanges $backup_response $actualBackupDestination$backupMappedString $currentBackupFolderName ([Ref]$lastBackupsToKeep) ([Ref]$lastBackupFolders)
 					#$lastBackupFolderName = $lastBackupFolders[-1]		ZZZ	Don't need because it's not used later
-					WaitForKey ("After "+ $lastBackupsToKeep[-1] + ","  + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&QQQ
 				}
 				
 				StepCounter "Deleting old backups"
@@ -1230,17 +1219,13 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				#.PARAMETER ClosestRotation
 				# Strategy of snapshot rotation keeping the most closest and the first backup in a time period.
 				if ($ClosestRotation -eq $True) {				
-					Write-Host ("Before ClosestRotation" + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&
-					ClosestRotation ([Ref]$lastBackupsToKeep) ([Ref]$lastBackupFolders) 
-					WaitForKey ("After ClosestRotation" + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&QQQ
+					ClosestRotation ([Ref]$lastBackupsToKeep) ([Ref]$lastBackupFolders)
 				}
 
-				# Parameter backupsToKeepPerYear QQQ
+				# Parameter backupsToKeepPerYear
 				if(($lastBackupFolders.length -gt 0) -and ($backupsToKeepPerYear -gt 0))
 				{			
-					Write-Host ("Before " + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&
 					GetBackupsToKeepPerYear $backupsToKeepPerYear ([Ref]$lastBackupsToKeep) ([Ref]$lastBackupFolders) $backup_source_folder
-					WaitForKey ("After " + $lastBackupsToKeep.length + "," + $lastBackupFolders.length)	# &&&QQQ
 				}
 
 				$summary=""
@@ -1263,11 +1248,7 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 						WriteLog $summary
 						$emailBody = $emailBody + $summary
 
-						$lastBackupsToKeep#&&&
-						WaitForKey "before"#&&&
 						$lastBackupsToKeep+=$lastBackupFolders[($backupsToKeep * -1)..-1]
-						$lastBackupsToKeep#&&&
-						WaitForKey "afterQQQ"#&&&
 						CheckLastArrayItems ([Ref]$lastBackupFolders) ([Ref]$lastBackupsToKeep)
 					}
 					else
@@ -1310,8 +1291,6 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 			Write-Host $output
 			WriteLog $output
 		}
-		
-		WaitForKey	#&&&
 	}
 
 	if (($deleteOldLogFiles -eq $True) -and ($logFileDestination)) {

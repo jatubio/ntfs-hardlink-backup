@@ -352,8 +352,6 @@ Function GetTimeSpanFolders
 			}			
 		}
 		
-		#Write-Host "`n"
-		#WaitForKey "Returns $($lastBackupsToKeep.length)" #&&&
 		return $lastBackupsToKeep
 		
 		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
@@ -1068,9 +1066,6 @@ Function ArrayFilter
 
 			if($matchinfo)
 			{
-	#			Write-Host ("matchinfo= " + $matchinfo.getType().FullName)	# &&&
-	#			Write-Host $matchinfo # &&&
-	#			Write-Host ("matchinfo.length= " + $matchinfo.count)	# &&&
 				#Filtering will return Selected.Microsoft.PowerShell.Commands.MatchInfo objects, an we need one array of strings
 				foreach($item in $matchinfo)
 				{	
@@ -1324,18 +1319,176 @@ Function CheckLastArrayItems
     {
 		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
 
-		Write-Host "CheckLastArrayItems`n" #&&&
-		Write-Host $(ShowArray $sourcearray.Value)	#&&&
-		WaitForKey "`n source before $($sourcearray.Value.length)" #&&&
-		Write-Host $(ShowArray $filterarray.Value)	#&&&
-		WaitForKey "`n filter before $($filterarray.Value.length)" #&&&
 		$sourcearray.Value=@(@(ArrayFilter $sourcearray.Value $filterarray.Value) | sort)
 		$filterarray.Value = @($filterarray.Value | sort)
-		Write-Host $(ShowArray $sourcearray.Value)	#&&&
-		WaitForKey "`n source after $($sourcearray.Value.length)" #&&&
-		Write-Host $(ShowArray $filterarray.Value)	#&&&
-		WaitForKey "`n filter after $($filterarray.Value.length)" #&&&
 
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
+    }
+
+    End
+	{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function ended"}
+}
+
+Function Get-IniArray
+{
+	<#
+	.Synopsis
+		Gets one Ini Parameter as array
+
+	.Description
+		Can give section of ini and default values.
+		
+	.Notes
+		Author    : Juan Antonio Tubio <jatubio@gmail.com>
+		GitHub    : https://github.com/jatubio
+		Date      : 2015/04/13
+		Version   : 1.0
+
+	.Parameter parameterName
+		Parameter to be retrieved
+
+	.Parameter section (optional)
+		Section of ini file
+
+	.Parameter default (optional)
+		Collection with default values
+
+	.Returns
+		Collection with parameter readed from ini file.
+		If parameter don't exist of it's disabled (First element=0)
+			return one empty collection
+
+	.Example
+		Get-IniArray "daily" "ClosestRotation" @(1,10,"hours")
+
+	#>
+	[CmdletBinding()]
+	Param(
+		[ValidateNotNullOrEmpty()]
+		[Parameter(Mandatory=$True)]
+		[string]$parameterName,
+		[ValidateNotNullOrEmpty()]
+		[Parameter(Mandatory=$False)]
+		[string]$section="",
+		[AllowEmptyCollection()]
+		[Parameter(Mandatory=$False)]
+		[Array]$default=@()
+	)
+
+	Begin
+		{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function started"}
+
+	Process
+    {
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
+
+			# Default values
+		if(!$section) { $section="${FQDN}" }
+		
+			# Variable to return
+		$iniArray=@()
+		
+			# Get defaults from parameter
+		if ($default) { $iniArray = $default  }
+		
+		$ini=Get-IniParameter $parameterName $section
+		
+			# If have something on Ini File
+		if($ini)
+		{
+			if($ini -ne "0")
+			{
+				# Split from comma separated to array
+				$values=@($ini -split ",")
+				
+				$iniArray = ArrayOverwrite $iniArray $values				
+			}
+
+			if(($ini -eq "0") -or ($iniArray[0] -eq "0"))
+			{
+				# If it's 0, disable all array elements
+				$iniArray = ,0 * $iniArray.length
+			}
+		}
+
+		return $iniArray
+		
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
+    }
+
+    End
+	{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function ended"}
+}
+
+Function ArrayOverwrite
+{
+	<#
+	.Synopsis
+		Merge two arrays
+
+	.Description
+		Merges the elements of two arrays together so that the values of firstArray are overwriten
+		by values of secondArray
+
+	.Notes
+		Author    : Juan Antonio Tubio <jatubio@gmail.com>
+		GitHub    : https://github.com/jatubio
+		Date      : 2015/04/13
+		Version   : 1.0
+
+	.Parameter firstArray
+		Array with the original elements
+
+	.Parameter secondArray
+		Array with elements that overwrite firstArray
+
+	.Returns
+		A new array with combined elements (overwritten)
+		The length of the returned array will be the greater of firstArray and secondArray
+
+	.Example
+		ArrayOverwrite @("cat","dog","bat","eagle","panther","ant") @("blue","green","black","white")
+		---
+		Will give @("blue","green","black","white","panther","ant")
+
+	.Example
+		ArrayOverwrite @("cat","dog","bat") @("blue","green","black","white","orange","pink")
+		---
+		Will give @("blue","green","black","white","orange","pink")
+
+	#>
+	[CmdletBinding()]
+	Param(
+		[AllowEmptyCollection()]
+		[Parameter(Mandatory=$True)]
+		[Array]$firstArray=@(),
+		[AllowEmptyCollection()]
+		[Parameter(Mandatory=$True)]
+		[Array]$secondArray=@()
+	)
+
+	Begin
+		{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function started"}
+
+	Process
+    {
+		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
+
+		for($i=0;$i -lt $secondArray.Length;$i++)
+		{
+			if($firstArray.length -gt $i)
+			{
+			$firstArray[$i]=$secondArray[$i]
+		}
+			else
+			{
+				$firstArray+=$secondArray[$i..($secondArray.Length-1)]
+				break
+			}
+		}
+
+		return $firstArray
+		
 		Write-Verbose "$($MyInvocation.MyCommand.Name):: Finished Processing"
     }
 

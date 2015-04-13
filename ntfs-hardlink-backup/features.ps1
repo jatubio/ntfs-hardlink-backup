@@ -86,7 +86,7 @@ Function GetBackupsToKeepPerYear
 		#First CheckArrays
 		CheckLastArrayItems ([Ref]([Ref]$lastBackupFolders).Value) ([Ref]([Ref]$lastBackupsToKeep).Value)
 
-		$backupsToDelete = $lastBackupFolders.Value #QQQ
+		$backupsToDelete = $lastBackupFolders.Value
 
 		$echo=("Found " + $backupsToDelete.length + " old backup(s)")
 		Write-Host "$echo`n"
@@ -148,8 +148,8 @@ Function GetBackupsToKeepPerYear
 
 		# Get Backups Selected For Keep
 		$backupsToKeep=@()
-		foreach ($year in $($lastBackupFoldersPerYear.keys | sort)) {
-			$backupsToKeep+=$lastBackupFoldersPerYear[$year]
+		foreach ($year in $($lastBackupFoldersPerYearToKeep.keys | sort)) {
+			$backupsToKeep+=$lastBackupFoldersPerYearToKeep[$year]
 		}
 
 		Write-Host "`n$yearBackupsKeptText"
@@ -397,22 +397,22 @@ Function ClosestRotation
 		A lastBackupsToKeep Collection
 	.Parameter lastBackupFolders (By Reference)
 		Specifies the Array of older backups folders found belonging to source. ($lastBackupFolders)
-	.Parameter recent
+	.Parameter recent (Optional, default=1)
 		Max number of recent backup(s) to keep
-	.Parameter daily
+	.Parameter daily (Optional, default=12,4,"hours")
 		Three comma separated values: Every,Max,Format
 		All are optional
-	.Parameter weekly
+	.Parameter weekly (Optional, default=84,4,"hours")
 		Three comma separated values: Every,Max,Format
 		All are optional
-	.Parameter monthly
+	.Parameter monthly (Optional, default=15,24,"days")
 		Three comma separated values: Every,Max,Format
 		All are optional
-	.Parameter annually
+	.Parameter annually (Optional, default=6,6,"months")
 		Three comma separated values: Every,Max,Format
 		All are optional
-	.Parameter maxyears
-		Max years to keep backups with 1 item by year.
+	.Parameter maxyears (Optional, default=5)
+		Max years backups to keep with 1 backup by year.
 	.Parameter fixedTime
 		If fixedTime, we use last time span date to calculate next 'time span' 
 		to next backup item. Default to False
@@ -458,7 +458,7 @@ Function ClosestRotation
 		[Parameter(Mandatory=$True)]
 		[Ref]$lastBackupFolders,
 		[Parameter(Mandatory=$False)]
-		[Int32]$recent=5,
+		[Int32]$recent,
 		[Parameter(Mandatory=$False)]
 		[Array]$daily=@(),
 		[Parameter(Mandatory=$False)]
@@ -468,7 +468,7 @@ Function ClosestRotation
 		[Parameter(Mandatory=$False)]
 		[Array]$annually=@(),
 		[Parameter(Mandatory=$False)]
-		[Int32]$maxyears=5,
+		[Int32]$maxyears,
 		[Parameter(Mandatory=$False)]
 		[switch]$fixedTime=$False,
 		[Parameter(Mandatory=$False)]
@@ -482,46 +482,16 @@ Function ClosestRotation
     {
 		Write-Verbose "$($MyInvocation.MyCommand.Name):: Processing"
 		
-			#Default values
+			#If not parameter is given, read from ini file, section ClosestRotation
+		if(!$recent) {$recent = Get-IniParameter "recent" "ClosestRotation" 1}
+		$daily = @(ArrayOverwrite @(Get-IniArray "daily" "ClosestRotation" @(12,4,"hours")) $daily)
+		$weekly = @(ArrayOverwrite @(Get-IniArray "weekly" "ClosestRotation" @(84,4,"hours")) $weekly)
+		$monthly = @(ArrayOverwrite @(Get-IniArray "monthly" "ClosestRotation" @(15,24,"days")) $monthly)
+		$annually = @(ArrayOverwrite @(Get-IniArray "annually" "ClosestRotation" @(6,6,"months")) $annually)
+		if(!$maxyears) {$maxyears = Get-IniParameter "maxyears" "ClosestRotation" 5}
 			#Always will keep at least most recent backup, because it's not in $lastBackupFolders collection and can't reach them
 		if($recent -le 0)	{$recent=1}			
-		if($daily[0] -ne 0)
-		{
-			if(!$daily[0]) {$daily+=12}
-			if(!$daily[1]) {$daily+=4}
-			if(!$daily[2]) {$daily+="hours"}
-		} else {
-			if(!$daily[0]) {$daily+=0}
-			if(!$daily[1]) {$daily+=0}
-		}
-		if($weekly[0] -ne 0)
-		{
-			if(!$weekly[0]) {$weekly+=84}
-			if(!$weekly[1]) {$weekly+=8}
-			if(!$weekly[2]) {$weekly+="hours"}
-		} else {
-			if(!$weekly[0]) {$weekly+=0}
-			if(!$weekly[1]) {$weekly+=0}
-		}
-		if($monthly[0] -ne 0)
-		{
-			if(!$monthly[0]) {$monthly+=15}
-			if(!$monthly[1]) {$monthly+=24}
-			if(!$monthly[2]) {$monthly+="days"}
-		} else {
-			if(!$monthly[0]) {$monthly+=0}
-			if(!$monthly[1]) {$monthly+=0}
-		}
-		if($annually[0] -ne 0)
-		{
-			if(!$annually[0]) {$annually+=6}
-			if(!$annually[1]) {$annually+=6}
-			if(!$annually[2]) {$annually+="months"}
-		} else {
-			if(!$annually[0]) {$annually+=0}
-			if(!$annually[1]) {$annually+=0}
-		}
-		
+
 		$echo="Using Closest Rotation Scheme to remove older backups.`n"
 		if($fixedTime -eq $True)
 		{
@@ -586,7 +556,7 @@ Function ClosestRotation
 			Write-Host $echo
 
 			# Remove most recent backups
-			# The current/most recent backup isn't in the array	QQQ
+			# The current/most recent backup isn't in the array
 			if($recent -gt 0)
 			{
 				$echo=("Choosing Recent backup(s) to keep: max $recent")
