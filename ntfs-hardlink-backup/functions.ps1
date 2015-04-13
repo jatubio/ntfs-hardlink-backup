@@ -562,7 +562,7 @@ Function DeleteBackupFolders
 	.Parameter backupsToDelete
 		Specifies the collection with backup folders to delete
 
-	.Parameter dryrun
+	.Parameter DryRun
 		Simulation Mode.  Not do any writing on the hard disk, instead it 
 		will just report the actions it would have taken.
 
@@ -585,7 +585,7 @@ Function DeleteBackupFolders
 		[Parameter(Mandatory=$True)]
 		[Array]$backupsToDelete,
 		[Parameter(Mandatory=$False)]
-		[switch]$dryrun=$True
+		[switch]$DryRun=$False
 	)
 
 	Begin
@@ -599,15 +599,19 @@ Function DeleteBackupFolders
 		
 		if($backupsToDelete.length -gt 0)
 		{
-			if($dryrun -eq $True)
+			if($DryRun -eq $True)
 			{
 				$echo="Simulation Mode: No backup folder(s) will be damaged :)"
 				$log+="`r`n$echo`r`n`r`n"
 				Write-Host "`n$echo`n"
 			}
+			elseif($Script:DryRun -eq $True)
+			{
+				$DryRun=$True
+			}
 			
 			$echo=("Deleting " + $backupsToDelete.length + " old backup(s)`n")
-			if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
+			if($DryRun -eq $True) {$echo="**Simulated** "+$echo}
 			if($EchoVerbose) { Write-Host $echo }
 			if($LogVerbose) { $log+="`r`n$echo" }
 			
@@ -616,25 +620,25 @@ Function DeleteBackupFolders
 				$folderToDelete =  $backupDestination +"\"+ $folder
 
 				$echo="Deleting $folderToDelete"
-				if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
+				if($DryRun -eq $True) {$echo="**Simulated** "+$echo}
 				if($EchoVerbose) { Write-Host $echo }
 				if($LogVerbose) { $log+="`r`n$echo" }
 				
-				if($dryrun -eq $False)
+				if($DryRun -eq $False)
 				{
 					DeleteFolder "$folderToDelete"
 				}
 			}
 
 			$echo="Deleted " + $backupsToDelete.length +" old backup(s)`n"
-			if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
+			if($DryRun -eq $True) {$echo="**Simulated** "+$echo}
 			Write-Host "`n$echo"
 			$log+="`r`n$echo"
 		}
 		else
 		{
 			$echo="No old backups were deleted"
-			#if($dryrun -eq $True) {$echo="**Simulated** "+$echo} ZZZ
+			#if($DryRun -eq $True) {$echo="**Simulated** "+$echo} ZZZ
 			Write-Host "`n$echo"
 			$log+="`r`n$echo"
 		}
@@ -724,7 +728,7 @@ Function DeleteLogFiles
 	.Parameter folderNames
 		Specifies the collection with backup folders to delete
 
-	.Parameter dryrun
+	.Parameter DryRun
 		Simulation Mode.  Not do any writing on the hard disk, instead it 
 		will just report the actions it would have taken.
 
@@ -747,7 +751,7 @@ Function DeleteLogFiles
 		[Parameter(Mandatory=$True)]
 		[Array]$folderNames,
 		[Parameter(Mandatory=$False)]
-		[switch]$dryrun=$True
+		[switch]$DryRun=$False
 	)
 
 	Begin
@@ -759,11 +763,15 @@ Function DeleteLogFiles
 
 		$log=""
 		
-		if($dryrun -eq $True)
+		if($DryRun -eq $True)
 		{
-			$echo="Simulation Mode: No log file(s) will be damaged :)"
+			$echo="Simulation Mode: No backup folder(s) will be damaged :)"
 			$log+="`r`n$echo`r`n`r`n"
 			Write-Host "`n$echo`n"
+		}
+		elseif($Script:DryRun -eq $True)
+		{
+			$DryRun=$True
 		}
 		
 		$echoDeleted=""
@@ -786,7 +794,7 @@ Function DeleteLogFiles
 				{
 					$logFilesDeleted++
 					$echo="Deleting $logFileToDelete"
-					if($dryrun -eq $False)
+					if($DryRun -eq $False)
 					{
 						Remove-Item "$logFileToDelete"
 					}
@@ -804,7 +812,7 @@ Function DeleteLogFiles
 					$echo="Deleting $logFileToDelete.zip"
 					}
 
-					if($dryrun -eq $False)
+					if($DryRun -eq $False)
 					{
 						Remove-Item "$logFileToDelete.zip"
 					}
@@ -812,7 +820,7 @@ Function DeleteLogFiles
 				
 				if($echo)
 				{
-					if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
+					if($DryRun -eq $True) {$echo="**Simulated** "+$echo}
 					$logDeleted+="`r`n$echo"
 					$echoDeleted+="$echo`n"
 				}
@@ -822,7 +830,7 @@ Function DeleteLogFiles
 		if($logFilesDeleted -gt 0)
 		{
 			$echo=("Deleting " + $logFilesDeleted + " old log file(s)")
-			if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
+			if($DryRun -eq $True) {$echo="**Simulated** "+$echo}
 			if($LogVerbose) 
 			{ 
 				$log+="$echo`r`n"
@@ -836,14 +844,14 @@ Function DeleteLogFiles
 			}
 
 			$echo="Deleted " + $logFilesDeleted +" old log files(s)"
-			if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
+			if($DryRun -eq $True) {$echo="**Simulated** "+$echo}
 			Write-Host "`n$echo"
 			$log+="`r`n$echo"
 		}
 		else
 		{
 			$echo="No old log files were deleted"
-			if($dryrun -eq $True) {$echo="**Simulated** "+$echo}
+			if($DryRun -eq $True) {$echo="**Simulated** "+$echo}
 			Write-Host "`n$echo"
 			$log+="`r`n$echo"
 		}

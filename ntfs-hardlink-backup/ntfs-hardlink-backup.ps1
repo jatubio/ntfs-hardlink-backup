@@ -124,6 +124,9 @@
 .PARAMETER UseDriveName
 	Add Drive Name To Source Folder Destination
 	Thus, if you have source folder with the same name, have not conflicts!
+.PARAMETER DryRun
+	Simulation Mode. Do not delete backup folders, only show results
+	of Backup Strategy.
 .PARAMETER version
 	print the version information and exit.	
 .EXAMPLE
@@ -227,8 +230,10 @@ Param(
 	[Parameter(Mandatory=$False)]
 	[switch]$UseDriveName,
 	[Parameter(Mandatory=$False)]
+	[switch]$DryRun=$False,
+	[Parameter(Mandatory=$False)]
 	[switch]$version=$False
-) # QQQ
+)
 Set-StrictMode -version Latest
 #The path and filename of the script it self
 $script_path = Split-Path -parent $MyInvocation.MyCommand.Definition
@@ -655,7 +660,7 @@ if (-not $FullBackup.IsPresent) {
 	$IniFileString = Get-IniParameter "FullBackup" "${FQDN}"
 	$FullBackup = Is-TrueString "${IniFileString}"
 }
-#QQQ
+
 #FullBackupEvery parameter
 # Preference: Given Parameter Value on Command Line, Parameter on Ini File, 0
 $FullBackupEveryConfig = @(Get-IniArray "FullBackupEvery" "${FQDN}" @(0))
@@ -713,6 +718,12 @@ if (-not $UseDriveName.IsPresent) {
 	$UseDriveName = Is-TrueString "${IniFileString}"
 }
 
+#DryRun parameter
+if (-not $DryRun.IsPresent) {
+	$IniFileString = Get-IniParameter "DryRun" "${FQDN}"
+	$DryRun = Is-TrueString "${IniFileString}"
+}
+
 if ([string]::IsNullOrEmpty($lnPath)) {
 	$lnPath = Get-IniParameter "lnPath" "${FQDN}"
 }
@@ -732,6 +743,13 @@ if ([string]::IsNullOrEmpty($lnPath) -or !(Test-Path -Path $lnPath -PathType lea
 			}
 		}
 	}
+}
+
+if($DryRun -eq $True)
+{
+	$echo="`nSimulation Mode: No backup folder(s) will be damaged :)"
+	$tempLogContent+="`r`n$echo`r`n`r`n"
+	Write-Host "`n$echo`n"
 }
 
 #Verbose. Showing ln.exe path 

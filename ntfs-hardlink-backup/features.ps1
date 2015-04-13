@@ -417,9 +417,6 @@ Function ClosestRotation
 		If fixedTime, we use last time span date to calculate next 'time span' 
 		to next backup item. Default to False
 		Else, we use last keeped backup item date.
-	.Parameter dryrun
-		Simulation Mode. Do not delete backup folders, only show results
-		of Backup Strategy.
 
 	.Returns
 		Nothing
@@ -434,13 +431,13 @@ Function ClosestRotation
 		and for weekly, keep 4 backups each every 7 days.
 
 	.Example
-		ClosestRotation ([Ref]$lastBackupsToKeep) ([Ref]$lastBackupFolders) -maxyears 0 -dryrun)
+		ClosestRotation ([Ref]$lastBackupsToKeep) ([Ref]$lastBackupFolders) -maxyears 0)
 		-----------
 		Keep folders using Most Closest Rotation Scheme with "Best distributed". Don't keep maxyears
-		snapshots. Simulation Mode: Don't remove nothing at all.
+		snapshots.
 
 	.Example
-		ClosestRotation ([Ref]$lastBackupsToKeep) ([Ref]$lastBackupFolders) 0 0 0 0 0 -dryrun
+		ClosestRotation ([Ref]$lastBackupsToKeep) ([Ref]$lastBackupFolders) 0 0 0 0 0
 		-----------
 		Display a funny message ;)
 
@@ -470,9 +467,7 @@ Function ClosestRotation
 		[Parameter(Mandatory=$False)]
 		[Int32]$maxyears,
 		[Parameter(Mandatory=$False)]
-		[switch]$fixedTime=$False,
-		[Parameter(Mandatory=$False)]
-		[switch]$dryrun=$False
+		[switch]$fixedTime=$False
 	)
 
 	Begin
@@ -528,13 +523,6 @@ Function ClosestRotation
 		if($EchoVerbose) { Write-Host $echo }
 		if($LogVerbose) { $log+="`r`n$echo" }
 		
-		if($dryrun -eq $True)
-		{
-			$echo="`nSimulation Mode: No backup folder(s) will be damaged :)`n`n"
-			$log+=$echo
-			Write-Host $echo
-		}
-
 		$allBackups=@()
 		$backupsToKeep=@()
 
