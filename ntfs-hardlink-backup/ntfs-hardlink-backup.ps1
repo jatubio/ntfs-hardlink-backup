@@ -121,6 +121,9 @@
 	Make a full backup
 .PARAMETER FullBackupEvery
 	Make a full backup (--copy parameter of ln.exe tool) each 'FullBackupEvery' backup(s)
+.PARAMETER UseDriveName
+	Add Drive Name To Source Folder Destination
+	Thus, if you have source folder with the same name, have not conflicts!
 .PARAMETER version
 	print the version information and exit.	
 .EXAMPLE
@@ -222,8 +225,10 @@ Param(
 	[Parameter(Mandatory=$False)]
 	[string]$FullBackupEvery,
 	[Parameter(Mandatory=$False)]
+	[switch]$UseDriveName,
+	[Parameter(Mandatory=$False)]
 	[switch]$version=$False
-)
+) # QQQ
 Set-StrictMode -version Latest
 #The path and filename of the script it self
 $script_path = Split-Path -parent $MyInvocation.MyCommand.Definition
@@ -650,7 +655,7 @@ if (-not $FullBackup.IsPresent) {
 	$IniFileString = Get-IniParameter "FullBackup" "${FQDN}"
 	$FullBackup = Is-TrueString "${IniFileString}"
 }
-
+#QQQ
 #FullBackupEvery parameter
 # Preference: Given Parameter Value on Command Line, Parameter on Ini File, 0
 $FullBackupEveryConfig = @(Get-IniArray "FullBackupEvery" "${FQDN}" @(0))
@@ -661,7 +666,7 @@ if($FullBackupEvery)
 if([int]$FullBackupEveryConfig[0] -gt 0)
 {
 		# Have no counter, add FullBackupEvery Value as Counter
-	if($FullBackupEveryConfig.length -eq 1) 
+	if($FullBackupEveryConfig.length -eq 1)
 	{ 
 		$FullBackupEveryConfig+=$FullBackupEveryConfig 
 	}
@@ -700,6 +705,12 @@ if([int]$FullBackupEveryConfig[0] -gt 0)
 elseif($FullBackup)
 {
 	Verbose "Making a Full Backup (FullBackup Parameter On)`n"
+}
+
+#UseDriveName parameter
+if (-not $UseDriveName.IsPresent) {
+	$IniFileString = Get-IniParameter "UseDriveName" "${FQDN}"
+	$UseDriveName = Is-TrueString "${IniFileString}"
 }
 
 if ([string]::IsNullOrEmpty($lnPath)) {
@@ -991,6 +1002,10 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 				}
 			} else {
 				$backup_source_folder =  split-path $backup_source -leaf
+				if($UseDriveName -and ($backup_source_drive_letter -match "([A-Z]):") )
+				{
+					$backup_source_folder=$matches[1]+"_"+$backup_source_folder
+				}
 			}
 			
 			$actualBackupDestination = "$selectedBackupDestination\$backup_source_folder"
