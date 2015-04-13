@@ -526,7 +526,7 @@ Function GetAllBackupsSourceItems
 		$matchString = $matchString + ' - (\d{4})-\d{2}-\d{2} \d{2}-\d{2}-\d{2}$' 
 		foreach ($item in $oldBackupItems) 
 		{
-			if ($item.Name  -match $matchString ) {
+			if ($item.Name -match $matchString ) {
 				$lastBackupFolders += $item.name
 			}
 		}
@@ -1478,8 +1478,8 @@ Function ArrayOverwrite
 		{
 			if($firstArray.length -gt $i)
 			{
-			$firstArray[$i]=$secondArray[$i]
-		}
+				$firstArray[$i]=$secondArray[$i]
+			}
 			else
 			{
 				$firstArray+=$secondArray[$i..($secondArray.Length-1)]
@@ -1494,4 +1494,62 @@ Function ArrayOverwrite
 
     End
 	{Write-Verbose "$($MyInvocation.MyCommand.Name):: Function ended"}
+}
+
+Function Set-IniValue
+{
+	<#
+	.Synopsis
+		Set one Value on ini file
+
+	.Description
+		Set one value on one ini file.
+		**Ignores section**
+	
+	.Notes
+		Author    : Juan Antonio Tubio <jatubio@gmail.com>
+		GitHub    : https://github.com/jatubio
+		Date      : 2015/04/14
+		Version   : 1.0
+
+	.Parameter Path
+		Full Path to Ini file
+
+	.Parameter Key
+		Key to find
+
+	.Parameter Value
+		Value to set
+
+	.Returns
+		Nothing
+	
+	.Example
+		Set-IniValue $LogFile "Verbose" "False"
+
+	#>
+	[CmdletBinding()]
+	param(
+		[Parameter(Mandatory=$True)]
+		[ValidateScript({Test-Path $_})]
+		[string] $Path,
+		[Parameter(Mandatory=$True)]
+		[ValidateNotNullOrEmpty()]
+		[string] $Key,
+		[Parameter(Mandatory=$True)]
+		[ValidateNotNullOrEmpty()] 
+		[string]$Value
+	)
+
+	$regmatch= $("^($Key\s*=\s*)(.*)")
+	$regreplace=$('${1}'+$Value)
+	
+	if ((Get-Content $Path) -match $regmatch)
+	{
+		(Get-Content -Path $Path) | ForEach-Object { $_ -replace $regmatch,$regreplace } | Set-Content $Path
+	} 
+	else
+	{    
+		Add-Content -Path $Path -Value $("`n" + $Key + "=" + $Value)       
+	}
 }

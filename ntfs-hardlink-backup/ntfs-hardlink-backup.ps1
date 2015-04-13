@@ -117,6 +117,10 @@
 	Strategy of snapshot rotation keeping the most closest and the first backup in a time period.
 	Other strategies such backupsToKeep and backupsToKeepPerYear will be accumulated.
 	If you want to disable some of these, set them to 1.
+.PARAMETER FullBackup
+	Make a full backup
+.PARAMETER FullBackupEvery
+	Make a full backup (--copy parameter of ln.exe tool) each 'FullBackupEvery' backup(s)
 .PARAMETER version
 	print the version information and exit.	
 .EXAMPLE
@@ -213,6 +217,10 @@ Param(
 	[switch]$SkipIfNoChanges,
 	[Parameter(Mandatory=$False)]
 	[switch]$ClosestRotation,
+	[Parameter(Mandatory=$False)]
+	[switch]$FullBackup,
+	[Parameter(Mandatory=$False)]
+	[string]$FullBackupEvery,
 	[Parameter(Mandatory=$False)]
 	[switch]$version=$False
 )
@@ -635,6 +643,63 @@ if (-not $ClosestRotation.IsPresent) {
 	$IniFileString = Get-IniParameter "ClosestRotation" "ClosestRotation"
 	if(!$IniFileString){ $IniFileString = Get-IniParameter "ClosestRotation" "${FQDN}" }
 	$ClosestRotation = Is-TrueString "${IniFileString}"
+}
+
+#FullBackup parameter
+if (-not $FullBackup.IsPresent) {
+	$IniFileString = Get-IniParameter "FullBackup" "${FQDN}"
+	$FullBackup = Is-TrueString "${IniFileString}"
+}
+
+#FullBackupEvery parameter
+# Preference: Given Parameter Value on Command Line, Parameter on Ini File, 0
+$FullBackupEveryConfig = @(Get-IniArray "FullBackupEvery" "${FQDN}" @(0))
+if($FullBackupEvery)
+{
+	$FullBackupEveryConfig = @(ArrayOverwrite $FullBackupEveryConfig @($FullBackupEvery -split ","))
+}
+if([int]$FullBackupEveryConfig[0] -gt 0)
+{
+		# Have no counter, add FullBackupEvery Value as Counter
+	if($FullBackupEveryConfig.length -eq 1) 
+	{ 
+		$FullBackupEveryConfig+=$FullBackupEveryConfig 
+	}
+	
+		# If counter gets 0, do a full backup (Or passed Parameter FullBackup=$True)
+	if($FullBackup  -or ([int]$FullBackupEveryConfig[1] -eq 0))
+	{
+		$FullBackupEveryConfig[1]=[int]$FullBackupEveryConfig[0]	# Reset counter
+		
+		If($FullBackup)
+		{
+			Verbose "Making a Full Backup (FullBackup Parameter On)`n"
+		}
+		else
+		{
+			Verbose "Making a Full Backup (FullBackupEvery=$($FullBackupEveryConfig[0]))`nThis is the backup number $($FullBackupEveryConfig[0]) from the last Full Backup`n"
+			$FullBackup=$True
+		}		
+	}
+	else
+	{
+		$FullBackupEveryConfig[1]=[int]$FullBackupEveryConfig[1]-1	# Decrease counter
+		if([int]$FullBackupEveryConfig[1] -gt 0)
+		{
+			Verbose "$($FullBackupEveryConfig[1]) backup(s) left for one Full Backup (FullBackupEvery=$($FullBackupEveryConfig[0]))`n"
+		}
+		else
+		{
+			Verbose "Next backup will be Full Backup (FullBackupEvery=$($FullBackupEveryConfig[0]))`n"
+		}
+	}
+
+		# Write new counter values to ini file
+	Set-IniValue $iniFile "FullBackupEvery" ($FullBackupEveryConfig -join ",")
+}
+elseif($FullBackup)
+{
+	Verbose "Making a Full Backup (FullBackup Parameter On)`n"
 }
 
 if ([string]::IsNullOrEmpty($lnPath)) {
@@ -1126,7 +1191,7 @@ if (($parameters_ok -eq $True) -and ($doBackup -eq $True) -and (test-path $backu
 			$start_time = get-date -f "yyyy-MM-dd HH-mm-ss"
 
 			$unrollLogMessage="Using Unroll mode:`r`n`tAll Outer Junctions/Symlink Directories will be rebuild inside the hierarchy at the destination location.`r`n`tOuter Symlink Files will be copied to the destination location.`r`n`tsee http://schinagl.priv.at/nt/ln/ln.html#unroll for more information.`r`n"
-			if ($lastBackupFolderName -eq "" ) {
+			if (($lastBackupFolderName -eq "") -or $FullBackup) {
 				$cmdString="`"$lnPath`" $commonArgumentString --copy `"$backup_source_path`" `"$actualBackupDestination`""
 
 				$echo="Full copy from $backup_source_path to $actualBackupDestination$backupMappedString`n"
