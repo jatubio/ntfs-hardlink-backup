@@ -127,6 +127,10 @@
 .PARAMETER DryRun
 	Simulation Mode. Do not delete backup folders, only show results
 	of Backup Strategy.
+.PARAMETER SoundOnSuccess
+	Play a sound if not error
+.PARAMETER SoundOnError
+	Play a sound if error
 .PARAMETER version
 	print the version information and exit.	
 .EXAMPLE
@@ -137,7 +141,8 @@
 	Backup with more than one source.
 .NOTES
 	Author: Artur Neumann *INFN*, Phil Davis *INFN*, Nikita Feodonit
-.BACKWARDS COMPATIBILITY
+
+	BACKWARDS COMPATIBILITY:
 	Now $lastBackupFolders have only the names and not the items
 #>
 
@@ -232,6 +237,10 @@ Param(
 	[Parameter(Mandatory=$False)]
 	[switch]$DryRun=$False,
 	[Parameter(Mandatory=$False)]
+	[switch]$SoundOnSuccess=$False,
+	[Parameter(Mandatory=$False)]
+	[switch]$SoundOnError=$False,
+	[Parameter(Mandatory=$False)]
 	[switch]$version=$False
 )
 Set-StrictMode -version Latest
@@ -280,7 +289,9 @@ Function Get-Version
 	#>
 	
 	#Get the help-text of my self
-	$helpText=Get-Help $script_path/ntfs-hardlink-backup.ps1 
+	$helpText=Get-Help "D:\Proyectos\Personales\Desktop\MyRsyncBackup\International_Nepal_Fellowship-Windows-Tools\ntfs-hardlink-backup\ntfs-hardlink-backup.ps1" # $script_path/ntfs-hardlink-backup.ps1 
+	Write-Host $helpText
+	exit # QQQ
 	
 	#Get-Help returns a PSObjects with other PSObjects inside
 	#So we are trying some black magic to get a string out of it and then to parse the version
@@ -320,6 +331,7 @@ $versionString=Get-Version
 
 if ($version) {
 	Write-Host $versionString
+	Echo "si"
 	exit
 } else {
 	$output = "NTFS-HARDLINK-BACKUP $versionString`r`n"
@@ -722,6 +734,18 @@ if (-not $UseDriveName.IsPresent) {
 if (-not $DryRun.IsPresent) {
 	$IniFileString = Get-IniParameter "DryRun" "${FQDN}"
 	$DryRun = Is-TrueString "${IniFileString}"
+}
+
+#SoundOnSuccess parameter
+if (-not $SoundOnSuccess.IsPresent) {
+	$IniFileString = Get-IniParameter "SoundOnSuccess" "${FQDN}"
+	$SoundOnSuccess = Is-TrueString "${IniFileString}"
+}
+
+#SoundOnError parameter
+if (-not $SoundOnError.IsPresent) {
+	$IniFileString = Get-IniParameter "SoundOnError" "${FQDN}"
+	$SoundOnError = Is-TrueString "${IniFileString}"
 }
 
 if ([string]::IsNullOrEmpty($lnPath)) {
@@ -1586,4 +1610,14 @@ if (-not ([string]::IsNullOrEmpty($postExecutionCommand))) {
 	$output += "`n"
 	Write-Host $output
 	WriteLog "$output`r`n"
+}
+
+if($error_during_backup -and $SoundOnError)
+{
+	MissionImpossibleSong
+}
+
+if(!$error_during_backup -and $SoundOnSuccess)
+{
+	EncountersOfTheThirdKindSong
 }
